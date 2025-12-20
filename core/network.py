@@ -159,6 +159,7 @@ class NetworkManager(QObject):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5.0)
         try:
+            print(f"[DEBUG] Connecting to relay {self.relay_host}:{self.relay_port} as {self._relay_role}")
             sock.connect((self.relay_host, self.relay_port))
             sock.settimeout(None)
             self.socket = sock
@@ -255,7 +256,10 @@ class NetworkManager(QObject):
 
     def _send_packet(self, data_dict: Dict) -> bool:
         """Low-level packet sending with thread safety"""
-        target_socket = self.client_socket if self.is_host else self.socket
+        if self.use_relay:
+            target_socket = self.socket
+        else:
+            target_socket = self.client_socket if self.is_host else self.socket
         
         if not target_socket or not self.running:
             return False

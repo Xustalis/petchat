@@ -166,8 +166,8 @@ class PetChatApp:
         self.port = port
         self.from_cli_args = from_cli_args
         self.use_relay = False
-        self.relay_host = ""
-        self.relay_port = 0
+        self.relay_host = Settings.DEFAULT_RELAY_HOST
+        self.relay_port = Settings.DEFAULT_RELAY_PORT
         self.room_id = "default"
         print(f"[DEBUG] Configuration: is_host={is_host}, host_ip={host_ip}, port={port}, from_cli_args={from_cli_args}")
         
@@ -516,7 +516,14 @@ class PetChatApp:
             except ValueError:
                 self.port = Settings.DEFAULT_PORT
             self.use_relay = getattr(dialog, "use_relay", False)
-            self.relay_host = getattr(dialog, "relay_host", "") or self.host_ip
+            relay_host_text = getattr(dialog, "relay_host", "").strip()
+            if self.use_relay:
+                if relay_host_text:
+                    self.relay_host = relay_host_text
+                else:
+                    self.relay_host = Settings.DEFAULT_RELAY_HOST
+            else:
+                self.relay_host = self.host_ip
             try:
                 relay_port_text = getattr(dialog, "relay_port_text", "") or str(Settings.DEFAULT_RELAY_PORT)
                 self.relay_port = int(relay_port_text)
