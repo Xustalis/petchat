@@ -23,9 +23,9 @@ class RoleSelectionDialog(QDialog):
         self.selected_role = "host"
         self.host_ip = ""
         self.port_text = str(Settings.DEFAULT_PORT)
+        self.relay_port_text = str(Settings.DEFAULT_RELAY_PORT)
         self.use_relay = False
         self.relay_host = ""
-        self.relay_port_text = ""
         self.room_id = "default"
         self.setWindowTitle("选择启动模式")
         self.setModal(True)
@@ -89,7 +89,7 @@ class RoleSelectionDialog(QDialog):
         self.relay_host_input = QLineEdit()
         self.relay_host_input.setPlaceholderText("例如 your-vps.com 或 1.2.3.4")
         relay_port_label = QLabel("中转端口")
-        self.relay_port_input = QLineEdit()
+        self.relay_port_input = QLineEdit(self.relay_port_text)
         self.relay_port_input.setPlaceholderText("默认 9000")
         room_id_label = QLabel("房间ID（Host 与 Guest 需一致）")
         self.room_id_input = QLineEdit()
@@ -518,9 +518,10 @@ class PetChatApp:
             self.use_relay = getattr(dialog, "use_relay", False)
             self.relay_host = getattr(dialog, "relay_host", "") or self.host_ip
             try:
-                self.relay_port = int(getattr(dialog, "relay_port_text", "") or self.port)
+                relay_port_text = getattr(dialog, "relay_port_text", "") or str(Settings.DEFAULT_RELAY_PORT)
+                self.relay_port = int(relay_port_text)
             except ValueError:
-                self.relay_port = self.port
+                self.relay_port = Settings.DEFAULT_RELAY_PORT
             self.room_id = getattr(dialog, "room_id", "default") or "default"
             self.window.update_role(self.is_host)
 
