@@ -1,0 +1,9 @@
+PyQt6>=6.6.0
+openai>=1.0.0
+sqlalchemy>=2.0.0
+python-dotenv>=1.0.0
+
+# Optional: For building executables
+# pyinstaller>=6.0.0
+# nuitka>=2.0.0
+

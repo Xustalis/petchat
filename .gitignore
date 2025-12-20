@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.venv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Config (may contain sensitive data)
+config.json
+
+# Build artifacts
+build/
+dist/
+*.spec
+*.exe
+*.onefile-build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nuitka
+*.build/
+*.dist/
+*.onefile-build/
+
