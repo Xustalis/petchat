@@ -2,8 +2,9 @@
 import sys
 import argparse
 import socket
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup
+from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import from_qvariant
 
 from core.network import NetworkManager
 from core.database import Database
@@ -12,7 +13,7 @@ from core.config_manager import ConfigManager
 from ui.main_window import MainWindow
 from ui.api_config_dialog import APIConfigDialog
 from config.settings import Settings
-from PyQt6.QtWidgets import QMessageBox
+from ui.theme import Theme
 
 
 class RoleSelectionDialog(QDialog):
@@ -28,16 +29,17 @@ class RoleSelectionDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout()
-        layout.setSpacing(15)
+        layout.setSpacing(Theme.SPACING_MD)
+        self.setStyleSheet(Theme.get_stylesheet())
 
         title = QLabel("选择启动模式")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        title.setStyleSheet(f"font-size: {Theme.FONT_SIZE_LG}px; font-weight: bold; color: {Theme.TEXT_PRIMARY};")
         layout.addWidget(title)
 
         hint = QLabel("根据 PRD：Host 负责配置 AI 和提供服务，Guest 只负责连接体验。")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #6b7280; font-size: 12px;")
+        hint.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
         layout.addWidget(hint)
 
         role_layout = QHBoxLayout()
@@ -71,6 +73,10 @@ class RoleSelectionDialog(QDialog):
         button_layout.addStretch()
         cancel_btn = QPushButton("取消")
         ok_btn = QPushButton("确定")
+        
+        # Style buttons explicitly
+        cancel_btn.setStyleSheet(f"background-color: {Theme.SECONDARY}; color: white;")
+        
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
         layout.addLayout(button_layout)
@@ -116,12 +122,19 @@ class PetChatApp:
         self.ai_service = None  # Only host has AI service
         
         self.app = QApplication(sys.argv)
+        # Apply global theme
+        self.app.setStyleSheet(Theme.get_stylesheet())
+        
         self.window = MainWindow(is_host=is_host)
         self.message_count = 0
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
-        self.network.set_message_callback(self._on_message_received)
+        # Network signals
+        self.network.message_received.connect(self._on_message_received)
+        self.network.connection_status_changed.connect(self._on_connection_status)
+        self.network.error_occurred.connect(self._on_network_error)
+        
         self.window.message_sent.connect(self._on_message_sent)
         self.window.ai_requested.connect(self._on_ai_requested)
         
@@ -133,6 +146,18 @@ class PetChatApp:
         # Update memories display periodically
         self._update_memories_display()
     
+    def _on_connection_status(self, connected: bool, message: str):
+        """Handle connection status changes"""
+        self.window.update_status(message)
+        if not connected:
+            self.window.add_message("System", f"⚠️ 连接断开: {message}")
+
+    def _on_network_error(self, error_msg: str):
+        """Handle network errors"""
+        self.window.update_status(f"Error: {error_msg}")
+        # Optional: log error to console or file
+        print(f"Network Error: {error_msg}")
+
     def _init_ai_service(self):
         """Initialize AI service with config"""
         if not self.is_host:
@@ -363,11 +388,8 @@ class PetChatApp:
             except:
                 self.window.update_status(f"Host模式 - 端口: {self.port}")
         else:
-            if self.network.connect_as_guest():
-                self.window.update_status(f"Guest模式 - 已连接到 {self.host_ip}:{self.port}")
-            else:
-                self.window.update_status(f"Guest模式 - 连接失败")
-                return
+            self.window.update_status("正在连接 Host...")
+            self.network.connect_as_guest()
         
         # Show window
         self.window.show()
@@ -399,24 +421,16 @@ def main():
                        help=f"Port number (default: {Settings.DEFAULT_PORT})")
     
     args = parser.parse_args()
-
-    if args.host and args.guest:
-        print("Error: Cannot be both host and guest")
-        parser.print_help()
-        sys.exit(1)
-
-    has_role_arg = args.host or args.guest
-    if not has_role_arg:
-        is_host = True
-    else:
-        is_host = args.host
-
-    host_ip = Settings.DEFAULT_HOST_IP if is_host else args.host_ip
     
-    app = PetChatApp(is_host=is_host, host_ip=host_ip, port=args.port, from_cli_args=has_role_arg)
+    # Determine role
+    is_host = args.host
+    # If no role specified in CLI, we'll ask in GUI (unless pure CLI mode is desired, but here we have GUI)
+    # The App controller handles the dialog if from_cli_args is False
+    from_cli_args = args.host or args.guest
+    
+    app = PetChatApp(is_host=is_host, host_ip=args.host_ip, port=args.port, from_cli_args=from_cli_args)
     app.start()
 
 
 if __name__ == "__main__":
     main()
-
