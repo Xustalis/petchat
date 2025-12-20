@@ -4,7 +4,6 @@ import argparse
 import socket
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import from_qvariant
 
 from core.network import NetworkManager
 from core.database import Database
@@ -37,8 +36,8 @@ class RoleSelectionDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(f"font-size: {Theme.FONT_SIZE_LG}px; font-weight: bold; color: {Theme.TEXT_PRIMARY};")
         layout.addWidget(title)
-
-        hint = QLabel("根据 PRD：Host 负责配置 AI 和提供服务，Guest 只负责连接体验。")
+        
+        hint = QLabel("请选择您的角色：房主负责创建房间，访客可以加入现有房间。")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
         layout.addWidget(hint)
@@ -113,23 +112,45 @@ class PetChatApp:
     """Main application controller"""
     
     def __init__(self, is_host: bool, host_ip: str, port: int, from_cli_args: bool):
+        print("[DEBUG] PetChatApp.__init__ starting...")
+        
+        # Create QApplication first, before any other PyQt6 operations
+        print("[DEBUG] Creating QApplication...")
+        self.app = QApplication(sys.argv)
+        print("[DEBUG] QApplication created")
+        
+        # Apply global theme
+        print("[DEBUG] Applying theme...")
+        self.app.setStyleSheet(Theme.get_stylesheet())
+        print("[DEBUG] Theme applied")
+        
         self.is_host = is_host
         self.host_ip = host_ip
         self.port = port
         self.from_cli_args = from_cli_args
+        print(f"[DEBUG] Configuration: is_host={is_host}, host_ip={host_ip}, port={port}, from_cli_args={from_cli_args}")
         
+        print("[DEBUG] Creating ConfigManager...")
         self.config_manager = ConfigManager()
+        print("[DEBUG] ConfigManager created")
+        
+        print("[DEBUG] Creating Database...")
         self.db = Database()
+        print("[DEBUG] Database created")
+        
         self.ai_service = None  # Only host has AI service
         
-        self.app = QApplication(sys.argv)
-        # Apply global theme
-        self.app.setStyleSheet(Theme.get_stylesheet())
-        
+        print("[DEBUG] Creating MainWindow...")
         self.window = MainWindow(is_host=is_host)
-        self.window_id = window_manager.register_window(self.window)
-        self.app.aboutToQuit.connect(lambda: window_manager.unregister_window(self.window_id))
+        print("[DEBUG] MainWindow created")
+        
+        print("[DEBUG] Registering window...")
+        self.window_id = window_manager().register_window(self.window)
+        print(f"[DEBUG] Window registered with ID: {self.window_id}")
+        
+        self.app.aboutToQuit.connect(lambda: window_manager().unregister_window(self.window_id))
         self.message_count = 0
+        print("[DEBUG] PetChatApp.__init__ completed")
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
@@ -395,10 +416,15 @@ class PetChatApp:
             self.network.connect_as_guest()
         
         # Show window
+        print("[DEBUG] Showing window...")
         self.window.show()
+        print("[DEBUG] Window shown")
         
         # Run application
-        sys.exit(self.app.exec())
+        print("[DEBUG] Starting event loop...")
+        result = self.app.exec()
+        print(f"[DEBUG] Event loop exited with code: {result}")
+        sys.exit(result)
 
 
 def get_local_ip():
@@ -415,6 +441,7 @@ def get_local_ip():
 
 def main():
     """Main entry point"""
+    print("Starting pet-chat application...")
     parser = argparse.ArgumentParser(description="pet-chat - AI-powered chat application")
     parser.add_argument("--host", action="store_true", help="Run as host (server)")
     parser.add_argument("--guest", action="store_true", help="Run as guest (client)")
@@ -424,15 +451,20 @@ def main():
                        help=f"Port number (default: {Settings.DEFAULT_PORT})")
     
     args = parser.parse_args()
+    print(f"Parsed args: host={args.host}, guest={args.guest}, host_ip={args.host_ip}, port={args.port}")
     
     # Determine role
     is_host = args.host
     # If no role specified in CLI, we'll ask in GUI (unless pure CLI mode is desired, but here we have GUI)
     # The App controller handles the dialog if from_cli_args is False
     from_cli_args = args.host or args.guest
+    print(f"Role: {'host' if is_host else 'guest'}, from_cli_args={from_cli_args}")
     
+    print("Creating PetChatApp instance...")
     app = PetChatApp(is_host=is_host, host_ip=args.host_ip, port=args.port, from_cli_args=from_cli_args)
+    print("PetChatApp instance created, starting application...")
     app.start()
+    print("Application started")
 
 
 if __name__ == "__main__":
