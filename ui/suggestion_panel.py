@@ -73,7 +73,7 @@ class SuggestionPanel(QWidget):
         content_text.setMaximumHeight(150)
         content_text.setStyleSheet(
             f"QTextEdit {{ border: 1px solid {Theme.BG_BORDER}; border-radius: {Theme.RADIUS_SM}px;"
-            f" padding: 6px; background-color: {Theme.BG_MUTED}; color: {Theme.TEXT_PRIMARY}; font-size: 14px; }}"
+            f" padding: 6px; background-color: {Theme.BG_MAIN}; color: {Theme.TEXT_PRIMARY}; font-size: 14px; }}"
         )
         card_layout.addWidget(content_text)
         

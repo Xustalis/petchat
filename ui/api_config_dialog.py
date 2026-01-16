@@ -119,11 +119,9 @@ class APIConfigDialog(QDialog):
         button_layout.addWidget(apply_btn)
         
         save_btn = QPushButton("保存")
-        save_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {Theme.PRIMARY}; color: {Theme.PRIMARY_TEXT};"
-            f" border: none; border-radius: {Theme.RADIUS_SM}px; padding: 8px 20px; font-weight: bold; }}"
-            f" QPushButton:hover {{ background-color: {Theme.PRIMARY_HOVER}; }}"
-        )
+        # save_btn uses global primary button style
+        save_btn.setText("保存")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._on_save_clicked)
         button_layout.addWidget(save_btn)
         

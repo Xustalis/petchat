@@ -56,6 +56,8 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
         sidebar_widget = QWidget()
+        sidebar_widget.setObjectName("sidebar")
+        sidebar_widget.setStyleSheet(f"#sidebar {{ background-color: {Theme.BG_ELEVATED}; border-right: 1px solid {Theme.BG_BORDER}; }}")
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setSpacing(8)
         sidebar_layout.setContentsMargins(0, 0, 8, 0)
@@ -76,10 +78,10 @@ class MainWindow(QMainWindow):
         
         self.room_list = QListWidget()
         self.room_list.setStyleSheet(
-            f"QListWidget {{ background-color: {Theme.BG_MUTED}; border-radius: {Theme.RADIUS_MD}px;"
-            f" border: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item {{ padding: 6px 10px; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; }}"
+            f"QListWidget {{ background-color: transparent; border: none; outline: none; }}"
+            f"QListWidget::item {{ padding: 10px 16px; border-radius: {Theme.RADIUS_MD}px; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.PRIMARY}; font-weight: 600; }}"
+            f"QListWidget::item:hover:!selected {{ background-color: {Theme.BG_HOVER}; }}"
         )
         self.room_list.itemSelectionChanged.connect(self._on_room_selected)
         sidebar_layout.addWidget(self.room_list)
@@ -92,10 +94,9 @@ class MainWindow(QMainWindow):
         
         self.user_list = QListWidget()
         self.user_list.setStyleSheet(
-            f"QListWidget {{ background-color: {Theme.BG_MUTED}; border-radius: {Theme.RADIUS_MD}px;"
-            f" border: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item {{ padding: 6px 10px; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; }}"
+            f"QListWidget {{ background-color: transparent; border: none; outline: none; }}"
+            f"QListWidget::item {{ padding: 8px 16px; border-radius: {Theme.RADIUS_MD}px; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; }}"
         )
         self.user_list.itemSelectionChanged.connect(self._on_user_selected)
         sidebar_layout.addWidget(self.user_list)
@@ -120,6 +121,9 @@ class MainWindow(QMainWindow):
         
         self.message_display = QListWidget()
         self.message_display.setFrameShape(QFrame.Shape.NoFrame)
+        self.message_display.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.message_display.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.message_display.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.message_display.setStyleSheet(
             f"QListWidget {{ background-color: {Theme.BG_MAIN}; border: none; }}"
         )
@@ -279,11 +283,6 @@ class MainWindow(QMainWindow):
     def add_message(self, sender: str, content: str, timestamp: Optional[str] = None):
         """
         Add a message to the chat display
-        
-        Args:
-            sender: Message sender name
-            content: Message content
-            timestamp: Optional timestamp (defaults to now)
         """
         if timestamp is None:
             timestamp = datetime.now().strftime("%H:%M")
@@ -299,11 +298,14 @@ class MainWindow(QMainWindow):
         if show_separator:
             self._add_time_separator(timestamp)
         
+        # Container for the whole row
         bubble_widget = QWidget()
+        bubble_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) # Critical for transparency
         bubble_layout = QHBoxLayout()
         bubble_layout.setContentsMargins(10, 5, 10, 5)
         bubble_layout.setSpacing(10)
 
+        # Message Content (Text + Time)
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(4)
@@ -311,21 +313,30 @@ class MainWindow(QMainWindow):
         text_label = QLabel(content)
         text_label.setWordWrap(True)
         text_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        
+        # Explicit font setup
+        font = text_label.font()
+        font.setPointSize(12)  # Reduced from 14
+        text_label.setFont(font)
 
         time_label = QLabel(timestamp)
         time_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; background: transparent;"
         )
 
+        # Styling based on sender
         if sender == self.user_name:
+            # Self message: Primary Color Background, White Text
             text_label.setStyleSheet(
-                f"QLabel {{ background-color: {Theme.PRIMARY}; color: {Theme.PRIMARY_TEXT};"
-                f" border-radius: 18px; padding: 10px 14px; font-size: 14px; }}"
+                f"background-color: {Theme.PRIMARY}; color: #FFFFFF;"
+                f" border-radius: 12px; padding: 8px 12px;"
             )
         else:
+            # Other message: Light Purple Background, Black Text
             text_label.setStyleSheet(
-                f"QLabel {{ background-color: {Theme.BG_MUTED}; color: {Theme.TEXT_PRIMARY};"
-                f" border-radius: 18px; padding: 10px 14px; font-size: 14px; }}"
+                f"background-color: #E8DEF8; color: #000000;"
+                f" border-radius: 12px; padding: 8px 12px;"
+                f" border: 1px solid {Theme.BG_BORDER};"
             )
 
         content_layout.addWidget(text_label)

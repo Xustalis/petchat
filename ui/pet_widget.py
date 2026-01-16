@@ -73,12 +73,13 @@ class PetWidget(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet(f"""
             QLabel {{
-                color: {Theme.TEXT_SECONDARY};
+                color: {Theme.TEXT_PRIMARY};
                 font-size: {Theme.FONT_SIZE_SM}px;
                 font-weight: 600;
-                background: rgba(255, 255, 255, 0.9);
-                border-radius: {Theme.RADIUS_SM}px;
-                padding: 4px 12px;
+                background-color: {Theme.BG_SURFACE};
+                border: 1px solid {Theme.BG_BORDER};
+                border-radius: 12px;
+                padding: 6px 16px;
             }}
         """)
         layout.addWidget(self.status_label)
