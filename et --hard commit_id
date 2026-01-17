@@ -1,0 +1,14 @@
+[33m0c8019c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Optimize interface and fonts
+[33m205748f[m create pet
+[33m24b5690[m fetch:update
+[33mbda40ec[m update
+[33m3aa01bd[m update
+[33m9258b57[m update
+[33m929f23d[m update
+[33m4f2f0f9[m update
+[33me47af72[m[33m ([m[1;32mserver_restored[m[33m)[m server
+[33m0e24761[m Connection test with the second computer is normal, but the network disconnection handling mechanism is missing.
+[33m3a784e9[m codefix
+[33m08517e9[m update
+[33mc907633[m petchat
+[33m93539dc[m petchat

@@ -176,16 +176,21 @@ class PetChatApp:
         print("[DEBUG] ConfigManager created")
 
         print("[DEBUG] Initializing user profile...")
-        self.current_user_name, self.current_user_avatar = self._ensure_user_profile()
-        print(f"[DEBUG] User profile: name={self.current_user_name}, avatar={self.current_user_avatar}")
+        self.current_user_id, self.current_user_name, self.current_user_avatar = self._ensure_user_profile()
+        print(f"[DEBUG] User profile: id={self.current_user_id}, name={self.current_user_name}, avatar={self.current_user_avatar}")
         
         print("[DEBUG] Creating Database...")
         self.db = Database()
         print("[DEBUG] Database created")
-        self.current_session_id = "default"
+        
+        # Register local user in database
+        self.db.upsert_user(self.current_user_id, self.current_user_name, self.current_user_avatar, is_online=True)
+        
+        self.current_conversation_id = "default"  # Changed from session_id
         self.loaded_message_limit = 50
         
         self.ai_service = None
+        self.discovery_service = None  # Will be initialized in start()
         
         print("[DEBUG] Creating MainWindow...")
         self.window = MainWindow(is_host=is_host, user_name=self.current_user_name)
@@ -201,10 +206,20 @@ class PetChatApp:
         self._load_messages(reset=True)
 
     def _ensure_user_profile(self):
+        """Ensure user profile exists with persistent UUID"""
+        from core.models import generate_uuid
+        
+        # Get or generate user ID
+        user_id = self.config_manager.get_user_id()
+        if not user_id:
+            user_id = generate_uuid()
+            self.config_manager.set_user_id(user_id)
+            print(f"[DEBUG] Generated new user ID: {user_id}")
+        
         name = self.config_manager.get_user_name()
         avatar = self.config_manager.get_user_avatar()
         if name and 2 <= len(name.strip()) <= 20:
-            return name.strip(), avatar or ""
+            return user_id, name.strip(), avatar or ""
 
         dialog = UserProfileDialog(current_name=name or "", current_avatar=avatar or "")
         result = dialog.exec()
@@ -212,14 +227,14 @@ class PetChatApp:
             sys.exit(0)
         final_name = dialog.user_name()
         final_avatar = dialog.avatar()
-        self.config_manager.set_user_profile(final_name, final_avatar)
-        return final_name, final_avatar
+        self.config_manager.set_user_profile(final_name, final_avatar, user_id)
+        return user_id, final_name, final_avatar
 
     def _load_messages(self, reset: bool = False):
         if reset:
             self.loaded_message_limit = 50
         try:
-            messages = self.db.get_recent_messages(self.loaded_message_limit, session_id=self.current_session_id)
+            messages = self.db.get_recent_messages(self.loaded_message_limit, conversation_id=self.current_conversation_id)
             self.window.clear_messages()
             for msg in messages:
                 ts = msg.get("timestamp", "")
@@ -268,8 +283,8 @@ class PetChatApp:
         """Handle suggestion sent from peer"""
         self.window.show_suggestion(suggestion)
 
-    def _on_conversation_selected(self, session_id: str):
-        self.current_session_id = session_id or "default"
+    def _on_conversation_selected(self, conversation_id: str):
+        self.current_conversation_id = conversation_id or "default"
         self._load_messages(reset=True)
 
     def _on_load_more_requested(self):
@@ -350,8 +365,12 @@ class PetChatApp:
     
     def _on_message_received(self, sender: str, content: str):
         """Handle received message"""
-        self.db.add_message(sender, content, session_id=self.current_session_id)
+        # Use sender name as sender_id for now (will be updated when we have peer user tracking)
+        self.db.add_message(sender, content, self.current_conversation_id, sender)
         self.window.add_message(sender, content)
+        
+        # Update conversation last message
+        self.db.update_conversation_last_message(self.current_conversation_id, content[:50])
         
         # Trigger AI analysis (host only)
         if self.is_host and self.ai_service:
@@ -363,7 +382,11 @@ class PetChatApp:
         # Send via network
         self.network.send_message(sender, content)
         
-        self.db.add_message(sender, content, session_id=self.current_session_id)
+        # Store with current user's ID
+        self.db.add_message(sender, content, self.current_conversation_id, self.current_user_id)
+        
+        # Update conversation last message
+        self.db.update_conversation_last_message(self.current_conversation_id, content[:50])
         
         # Trigger AI analysis (host only)
         if self.is_host and self.ai_service:

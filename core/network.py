@@ -7,6 +7,192 @@ from typing import Optional, Dict
 from datetime import datetime
 from PyQt6.QtCore import QObject, pyqtSignal, QMutex, QMutexLocker
 
+
+class UDPDiscovery(QObject):
+    """UDP broadcast-based user discovery for LAN mode"""
+    
+    user_discovered = pyqtSignal(dict)  # Emits user info: {id, name, ip, port}
+    user_left = pyqtSignal(str)  # Emits user_id when user goes offline
+    
+    def __init__(self, user_id: str, user_name: str, tcp_port: int, broadcast_port: int = 8889):
+        super().__init__()
+        self.user_id = user_id
+        self.user_name = user_name
+        self.tcp_port = tcp_port
+        self.broadcast_port = broadcast_port
+        
+        self.running = False
+        self._broadcast_socket: Optional[socket.socket] = None
+        self._listen_socket: Optional[socket.socket] = None
+        self._broadcast_thread: Optional[threading.Thread] = None
+        self._listen_thread: Optional[threading.Thread] = None
+        
+        # Track discovered users: {user_id: {name, ip, port, last_seen}}
+        self._discovered_users: Dict[str, Dict] = {}
+        self._mutex = QMutex()
+    
+    def start(self):
+        """Start discovery service"""
+        if self.running:
+            return
+        
+        self.running = True
+        
+        # Start broadcast thread (announce presence)
+        self._broadcast_thread = threading.Thread(target=self._broadcast_loop, daemon=True)
+        self._broadcast_thread.start()
+        
+        # Start listen thread (discover others)
+        self._listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self._listen_thread.start()
+    
+    def stop(self):
+        """Stop discovery service"""
+        self.running = False
+        
+        # Send goodbye message
+        self._send_goodbye()
+        
+        try:
+            if self._broadcast_socket:
+                self._broadcast_socket.close()
+            if self._listen_socket:
+                self._listen_socket.close()
+        except Exception:
+            pass
+    
+    def _broadcast_loop(self):
+        """Periodically broadcast presence to LAN"""
+        try:
+            self._broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            
+            while self.running:
+                try:
+                    message = json.dumps({
+                        "type": "presence",
+                        "user_id": self.user_id,
+                        "user_name": self.user_name,
+                        "tcp_port": self.tcp_port,
+                        "timestamp": datetime.now().isoformat()
+                    }).encode('utf-8')
+                    
+                    # Broadcast to entire subnet
+                    self._broadcast_socket.sendto(message, ('<broadcast>', self.broadcast_port))
+                    
+                except Exception as e:
+                    print(f"[UDP] Broadcast error: {e}")
+                
+                time.sleep(5.0)  # Announce every 5 seconds
+                
+        except Exception as e:
+            print(f"[UDP] Failed to create broadcast socket: {e}")
+    
+    def _listen_loop(self):
+        """Listen for presence announcements from other users"""
+        try:
+            self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._listen_socket.bind(('', self.broadcast_port))
+            self._listen_socket.settimeout(1.0)
+            
+            while self.running:
+                try:
+                    data, addr = self._listen_socket.recvfrom(4096)
+                    message = json.loads(data.decode('utf-8'))
+                    
+                    msg_type = message.get("type")
+                    user_id = message.get("user_id")
+                    
+                    # Ignore our own broadcasts
+                    if user_id == self.user_id:
+                        continue
+                    
+                    if msg_type == "presence":
+                        self._handle_presence(message, addr[0])
+                    elif msg_type == "goodbye":
+                        self._handle_goodbye(user_id)
+                        
+                except socket.timeout:
+                    # Check for stale users
+                    self._check_stale_users()
+                    continue
+                except Exception as e:
+                    if self.running:
+                        print(f"[UDP] Listen error: {e}")
+                    
+        except Exception as e:
+            print(f"[UDP] Failed to create listen socket: {e}")
+    
+    def _handle_presence(self, message: dict, ip_address: str):
+        """Handle presence announcement from another user"""
+        user_id = message.get("user_id")
+        user_name = message.get("user_name")
+        tcp_port = message.get("tcp_port")
+        
+        if not all([user_id, user_name, tcp_port]):
+            return
+        
+        with QMutexLocker(self._mutex):
+            is_new = user_id not in self._discovered_users
+            
+            self._discovered_users[user_id] = {
+                "id": user_id,
+                "name": user_name,
+                "ip": ip_address,
+                "port": tcp_port,
+                "last_seen": time.time()
+            }
+        
+        # Emit signal for new user
+        if is_new:
+            self.user_discovered.emit({
+                "id": user_id,
+                "name": user_name,
+                "ip": ip_address,
+                "port": tcp_port
+            })
+    
+    def _handle_goodbye(self, user_id: str):
+        """Handle user leaving"""
+        with QMutexLocker(self._mutex):
+            if user_id in self._discovered_users:
+                del self._discovered_users[user_id]
+                self.user_left.emit(user_id)
+    
+    def _check_stale_users(self):
+        """Remove users that haven't been seen recently"""
+        timeout = 15.0  # Remove if not seen for 15 seconds
+        current_time = time.time()
+        
+        with QMutexLocker(self._mutex):
+            stale_users = [
+                user_id for user_id, info in self._discovered_users.items()
+                if current_time - info["last_seen"] > timeout
+            ]
+            
+            for user_id in stale_users:
+                del self._discovered_users[user_id]
+                self.user_left.emit(user_id)
+    
+    def _send_goodbye(self):
+        """Send goodbye message before stopping"""
+        try:
+            if self._broadcast_socket:
+                message = json.dumps({
+                    "type": "goodbye",
+                    "user_id": self.user_id
+                }).encode('utf-8')
+                self._broadcast_socket.sendto(message, ('<broadcast>', self.broadcast_port))
+        except Exception:
+            pass
+    
+    def get_discovered_users(self) -> list:
+        """Get list of currently discovered users"""
+        with QMutexLocker(self._mutex):
+            return list(self._discovered_users.values())
+
+
 class NetworkManager(QObject):
     """
     Manages P2P communication between Host and Guest.

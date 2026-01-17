@@ -415,11 +415,11 @@ class MainWindow(QMainWindow):
             return
         item = items[0]
         room_name = item.text()
-        session_id = item.data(Qt.ItemDataRole.UserRole) or "default"
+        conversation_id = item.data(Qt.ItemDataRole.UserRole) or "default"
         is_group = bool(item.data(Qt.ItemDataRole.UserRole + 1))
         self._current_is_group = is_group
         self.statusBar().showMessage(f"已切换到会话：{room_name}", 3000)
-        self.conversation_selected.emit(session_id)
+        self.conversation_selected.emit(conversation_id)
     
     def _on_user_selected(self):
         items = self.user_list.selectedItems()
@@ -446,9 +446,9 @@ class MainWindow(QMainWindow):
         if not ok:
             return
         name = name.strip() or "新的群聊"
-        session_id = f"group-{int(datetime.now().timestamp())}"
+        conversation_id = f"group-{int(datetime.now().timestamp())}"
         item = QListWidgetItem(name)
-        item.setData(Qt.ItemDataRole.UserRole, session_id)
+        item.setData(Qt.ItemDataRole.UserRole, conversation_id)
         item.setData(Qt.ItemDataRole.UserRole + 1, True)
         self.room_list.addItem(item)
         self.room_list.setCurrentItem(item)

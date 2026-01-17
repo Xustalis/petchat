@@ -66,13 +66,24 @@ class ConfigManager:
 
     def get_user_avatar(self) -> Optional[str]:
         return self.config.get('user_avatar')
+    
+    def get_user_id(self) -> Optional[str]:
+        """Get stored user ID (UUID)"""
+        return self.config.get('user_id')
+    
+    def set_user_id(self, user_id: str):
+        """Set user ID (UUID) - should only be called once on first run"""
+        self.config['user_id'] = user_id
+        self._save_config()
 
-    def set_user_profile(self, name: str, avatar: str = ""):
+    def set_user_profile(self, name: str, avatar: str = "", user_id: str = ""):
         self.config['user_name'] = name
         if avatar:
             self.config['user_avatar'] = avatar
         else:
             self.config.pop('user_avatar', None)
+        if user_id:
+            self.config['user_id'] = user_id
         self._save_config()
 
     def reset(self):
