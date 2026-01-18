@@ -56,6 +56,11 @@ class PetChatApp(QObject):
         self.db = Database()
         print("[DEBUG] Database created")
         
+        # Clean up any duplicate memories from previous sessions
+        removed = self.db.deduplicate_memories()
+        if removed > 0:
+            print(f"[DEBUG] Cleaned up {removed} duplicate memories")
+        
         # Register local user in database
         self.db.upsert_user(self.current_user_id, self.current_user_name, self.current_user_avatar, is_online=True)
         
@@ -452,18 +457,21 @@ class PetChatApp(QObject):
             
     def _on_server_ai_memory(self, conversation_id: str, memories: list):
         """Handle AI memories received from server"""
-        # Save new memories to local DB
+        # Save new memories to local DB (duplicate checking is done in add_memory)
+        added_count = 0
         if memories:
             for memory in memories:
-                # Check for duplicates is handled by add_memory or we can check here
-                # Using simple add for now, assuming server sends new valid memories
-                # Ideally, add_memory should return success/fail or check duplicates
-                self.db.add_memory(
-                    content=memory.get('content', ''),
-                    category=memory.get('category', 'general')
-                )
+                content = memory.get('content', '')
+                category = memory.get('category', 'general')
+                
+                # add_memory returns None if duplicate, ID if added
+                result = self.db.add_memory(content=content, category=category)
+                if result is not None:
+                    added_count += 1
             
-            self.window.add_message("System", f"🧠 提取了 {len(memories)} 条新记忆")
+            # Only show message if new memories were actually added
+            if added_count > 0:
+                self.window.add_message("System", f"🧠 提取了 {added_count} 条新记忆")
             
         # Update UI from local DB
         self._update_memories_display() 

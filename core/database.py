@@ -203,13 +203,31 @@ class Database:
         # Return in chronological order (oldest first)
         return [dict(row) for row in reversed(rows)]
     
-    def add_memory(self, content: str, category: Optional[str] = None, session_id: str = 'default'):
-        """Add a memory (extracted key information)"""
+    def add_memory(self, content: str, category: Optional[str] = None, session_id: str = 'default') -> Optional[int]:
+        """
+        Add a memory (extracted key information).
+        Returns the memory ID if added, or None if it's a duplicate.
+        """
+        if not content or not content.strip():
+            return None
+            
         cursor = self.conn.cursor()
+        
+        # Check for duplicate content (same content in same session)
+        cursor.execute(
+            "SELECT id FROM memories WHERE content = ? AND session_id = ?",
+            (content.strip(), session_id)
+        )
+        existing = cursor.fetchone()
+        if existing:
+            # Duplicate - don't insert
+            return None
+        
+        # Insert new memory
         timestamp = datetime.now().isoformat()
         cursor.execute(
             "INSERT INTO memories (content, category, created_at, session_id) VALUES (?, ?, ?, ?)",
-            (content, category, timestamp, session_id)
+            (content.strip(), category, timestamp, session_id)
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -240,6 +258,29 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM memories WHERE session_id = ?", (session_id,))
         self.conn.commit()
+    
+    def deduplicate_memories(self, session_id: str = 'default') -> int:
+        """
+        Remove duplicate memories, keeping the oldest entry for each unique content.
+        Returns the number of duplicates removed.
+        """
+        cursor = self.conn.cursor()
+        
+        # Delete duplicates, keeping the one with the smallest ID (oldest)
+        cursor.execute("""
+            DELETE FROM memories 
+            WHERE id NOT IN (
+                SELECT MIN(id) 
+                FROM memories 
+                WHERE session_id = ?
+                GROUP BY content
+            )
+            AND session_id = ?
+        """, (session_id, session_id))
+        
+        removed_count = cursor.rowcount
+        self.conn.commit()
+        return removed_count
     
     # User management methods
     def upsert_user(self, user_id: str, name: str, avatar: str = "", ip_address: str = "", port: int = 0, is_online: bool = False):
