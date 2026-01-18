@@ -82,9 +82,9 @@ class MainWindow(QMainWindow):
         
         self.room_list = QListWidget()
         self.room_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; outline: none; }}"
-            f"QListWidget::item {{ padding: 10px 16px; border-radius: {Theme.RADIUS_MD}px; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.PRIMARY}; font-weight: 600; }}"
+            f"QListWidget {{ background-color: transparent; border: none; outline: none; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item {{ padding: 10px 16px; border-radius: {Theme.RADIUS_MD}px; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; font-weight: 600; }}"
             f"QListWidget::item:hover:!selected {{ background-color: {Theme.BG_HOVER}; }}"
         )
         self.room_list.itemSelectionChanged.connect(self._on_room_selected)
@@ -98,9 +98,9 @@ class MainWindow(QMainWindow):
         
         self.user_list = QListWidget()
         self.user_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; outline: none; }}"
-            f"QListWidget::item {{ padding: 8px 16px; border-radius: {Theme.RADIUS_MD}px; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget {{ background-color: transparent; border: none; outline: none; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item {{ padding: 8px 16px; border-radius: {Theme.RADIUS_MD}px; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; font-weight: 600; }}"
         )
         self.user_list.itemSelectionChanged.connect(self._on_user_selected)
         sidebar_layout.addWidget(self.user_list)
@@ -119,9 +119,7 @@ class MainWindow(QMainWindow):
         chat_layout = QVBoxLayout()
         chat_layout.setSpacing(8)
 
-        self.load_more_button = QPushButton("加载更多消息")
-        self.load_more_button.clicked.connect(self._on_load_more_clicked)
-        chat_layout.addWidget(self.load_more_button)
+
         
         self.message_display = QListWidget()
         self.message_display.setFrameShape(QFrame.Shape.NoFrame)
