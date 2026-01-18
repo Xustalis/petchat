@@ -371,30 +371,56 @@ class MainWindow(QMainWindow):
         bubble_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         bubble_layout = QHBoxLayout()
         bubble_layout.setContentsMargins(10, 5, 10, 5)
-        bubble_layout.setSpacing(8)
+        bubble_layout.setSpacing(10) # Increased spacing between avatar and bubble
 
-        # Avatar (only show for other users)
-        if not is_me:
-            avatar_label = QLabel(sender_avatar if sender_avatar else "👤")
-            avatar_label.setStyleSheet(
-                "font-size: 32px; background: transparent; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;"
+        # Avatar Label Creation (Reusable)
+        def create_avatar_label(avatar_str, user_name):
+            # 1. Determine background color based on username hash
+            colors = [
+                "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", 
+                "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF",
+                "#E0E0E0", "#FFB5E8", "#B5B9FF", "#85E3FF"
+            ]
+            hash_val = sum(ord(c) for c in user_name) if user_name else 0
+            bg_color = colors[hash_val % len(colors)]
+            
+            # 2. Determine display content (Emoji mapping or first char)
+            # Simple mapping for common avatar keywords
+            avatar_map = {
+                "cat": "🐱", "dog": "🐶", "monitor": "📊", 
+                "robot": "🤖", "user": "👤", "admin": "👨‍⚖️"
+            }
+            
+            content = "👤"
+            if avatar_str:
+                if avatar_str.lower() in avatar_map:
+                    content = avatar_map[avatar_str.lower()]
+                else:
+                    # If it looks like an emoji (non-ascii), use it
+                    # Otherwise use first letter of name or avatar string
+                    if len(avatar_str) > 0 and ord(avatar_str[0]) > 127:
+                         content = avatar_str
+                    elif user_name:
+                         content = user_name[0].upper()
+                    else:
+                         content = avatar_str[:1].upper()
+            elif user_name:
+                content = user_name[0].upper()
+
+            lbl = QLabel(content)
+            lbl.setStyleSheet(
+                f"font-size: 20px; background: {bg_color}; border-radius: 20px; "
+                f"min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;"
+                f"border: 2px solid #FFFFFF;" # Add white border for better contrast
             )
-            avatar_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-            bubble_layout.addWidget(avatar_label)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            return lbl
 
         # Content container (includes username + message)
         content_container = QVBoxLayout()
         content_container.setContentsMargins(0, 0, 0, 0)
-        content_container.setSpacing(2)
+        content_container.setSpacing(4)
         
-        # Username (only show for other users)
-        if not is_me:
-            username_label = QLabel(sender)
-            username_label.setStyleSheet(
-                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; background: transparent;"
-            )
-            content_container.addWidget(username_label)
-
         # Message bubble layout (text + time)
         message_bubble = QVBoxLayout()
         message_bubble.setContentsMargins(0, 0, 0, 0)
@@ -406,39 +432,60 @@ class MainWindow(QMainWindow):
         
         # Explicit font setup
         font = text_label.font()
-        font.setPointSize(12)  # Reduced from 14
+        font.setPointSize(10)
         text_label.setFont(font)
 
         time_label = QLabel(timestamp)
         time_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; background: transparent;"
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 10px; background: transparent;"
         )
 
-        # Styling based on is_me instead of sender name
+        # Styling based on is_me
         if is_me:
-            # Self message: Primary Color Background, White Text
+            # Self message
             text_label.setStyleSheet(
                 f"background-color: {Theme.PRIMARY}; color: #FFFFFF;"
-                f" border-radius: 12px; padding: 8px 12px;"
+                f" border-radius: 12px; padding: 10px 14px;"
             )
-        else:
-            # Other message: Light Purple Background, Black Text
-            text_label.setStyleSheet(
-                f"background-color: #E8DEF8; color: #000000;"
-                f" border-radius: 12px; padding: 8px 12px;"
-                f" border: 1px solid {Theme.BG_BORDER};"
-            )
-
-        message_bubble.addWidget(text_label)
-        message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
-        
-        # Add message bubble to content container
-        content_container.addLayout(message_bubble)
-
-        if is_me:
+            message_bubble.addWidget(text_label)
+            message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
+            
+            # Add bubble to content container (No username for self)
+            content_container.addLayout(message_bubble)
+            
+            # Layout: [Stretch] [Content] [Avatar]
             bubble_layout.addStretch()
             bubble_layout.addLayout(content_container)
+            
+            # Avatar for self (Right side)
+            avatar_label = create_avatar_label(sender_avatar, sender)
+            bubble_layout.addWidget(avatar_label)
+            bubble_layout.setAlignment(avatar_label, Qt.AlignmentFlag.AlignTop)
+            
         else:
+            # Other message
+            text_label.setStyleSheet(
+                f"background-color: #F2F2F2; color: #000000;"
+                f" border-radius: 12px; padding: 10px 14px;"
+                f" border: 1px solid {Theme.BG_BORDER};"
+            )
+            message_bubble.addWidget(text_label)
+            message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
+            
+            # Username (only for others)
+            username_label = QLabel(sender)
+            username_label.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; background: transparent; margin-bottom: 2px;"
+            )
+            content_container.addWidget(username_label)
+            content_container.addLayout(message_bubble)
+            
+            # Layout: [Avatar] [Content] [Stretch]
+            # Avatar for other (Left side)
+            avatar_label = create_avatar_label(sender_avatar, sender)
+            bubble_layout.addWidget(avatar_label)
+            bubble_layout.setAlignment(avatar_label, Qt.AlignmentFlag.AlignTop)
+            
             bubble_layout.addLayout(content_container)
             bubble_layout.addStretch()
 

@@ -26,6 +26,10 @@ class PetChatApp(QObject):
         self.app = QApplication(sys.argv)
         print("[DEBUG] QApplication created")
         
+        # CRITICAL: Call QObject's __init__ AFTER creating QApplication
+        super().__init__()
+        print("[DEBUG] QObject initialized")
+        
         # Apply global theme
         print("[DEBUG] Applying theme...")
         self.app.setStyleSheet(Theme.get_stylesheet())
@@ -123,20 +127,23 @@ class PetChatApp(QObject):
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
+        # Network signals
+        self.network.connected.connect(self._on_connected)
+        self.network.disconnected.connect(self._on_disconnected)
+        self.network.connection_error.connect(self._on_network_error)
         self.network.message_received.connect(self._on_message_received)
-        self.network.connection_status_changed.connect(self._on_connection_status)
-        self.network.error_occurred.connect(self._on_network_error)
+        self.network.user_joined.connect(self._on_user_joined)
+        self.network.user_left.connect(self._on_user_left)
+        self.network.online_users_received.connect(self._on_online_users_received)
+        self.network.typing_status_received.connect(self._on_typing_status)
+        
+        # AI service signals (if available)
         if self.ai_service:
-            # Connect AI signals
             self.ai_service.suggestion_ready.connect(self._on_ai_suggestion)
             self.ai_service.emotion_analyzed.connect(self._on_ai_emotion)
-            print("[DEBUG] AI service started")
-        self.network.ai_suggestion_received.connect(self._on_remote_suggestion)
-        self.network.ai_emotion_received.connect(self._on_remote_emotion)
-        self.network.ai_memories_received.connect(self._on_remote_memories)
-        self.network.ai_request_received.connect(self._on_remote_ai_request)
-        self.network.typing_status_changed.connect(self._on_typing_status)
+            print("[DEBUG] AI service connected")
         
+        # Window signals
         self.window.message_sent.connect(self._on_message_sent)
         self.window.ai_requested.connect(self._on_ai_requested)
         self.window.conversation_selected.connect(self._on_conversation_selected)
@@ -149,8 +156,18 @@ class PetChatApp(QObject):
         self.window.api_config_reset.connect(self._on_api_config_reset)
         self.window.memory_viewer.clear_requested.connect(self._on_clear_memories)
         
-        # Update memories display periodically
+        # Update memories display
         self._update_memories_display()
+    
+    def _on_connected(self):
+        """Handle successful connection"""
+        self.window.update_status(f"已连接到服务器 {self.network.server_ip}")
+        self.window.add_message("System", "✅ 已连接到服务器")
+    
+    def _on_disconnected(self):
+        """Handle disconnection"""
+        self.window.update_status("已断开连接")
+        self.window.add_message("System", "⚠️ 与服务器断开连接")
     
     def _on_connection_status(self, connected: bool, message: str):
         """Handle connection status changes"""
@@ -178,25 +195,23 @@ class PetChatApp(QObject):
 
     def _on_local_typing_changed(self, is_typing: bool):
         if self.network:
-            self.network.send_typing(is_typing)
+            self.network.send_typing_status(is_typing)
     
-    def _on_user_discovered(self, user_info: dict):
-        """Handle discovered user from LAN"""
-        user_id = user_info.get("id")
-        user_name = user_info.get("name")
-        ip = user_info.get("ip")
-        port = user_info.get("port")
-        
-        print(f"[DEBUG] User discovered: {user_name} ({user_id}) at {ip}:{port}")
+    def _on_user_joined(self, user_id: str, user_name: str, avatar: str):
+        """Handle user joining"""
+        print(f"[DEBUG] User joined: {user_name} ({user_id})")
         
         # Add/update user in database
-        self.db.upsert_user(user_id, user_name, "", ip, port, is_online=True)
+        self.db.upsert_user(user_id, user_name, avatar, is_online=True)
         
         # Update UI online user list
         self._load_online_users()
+        
+        # Notification
+        self.window.add_message("System", f"👋 {user_name} 加入了聊天")
     
     def _on_user_left(self, user_id: str):
-        """Handle user leaving the LAN"""
+        """Handle user leaving"""
         print(f"[DEBUG] User left: {user_id}")
         
         # Mark user as offline
@@ -214,6 +229,20 @@ class PetChatApp(QObject):
             print(f"[DEBUG] Loaded {len(online_users)} online users to UI")
         except Exception as e:
             print(f"Error loading online users: {e}")
+    
+    def _on_online_users_received(self, users: list):
+        """Handle online users list from server"""
+        print(f"[DEBUG] Received online users list: {len(users)} users")
+        for user in users:
+            user_id = user.get("user_id")
+            if user_id and user_id != self.current_user_id:
+                self.db.upsert_user(
+                    user_id, 
+                    user.get("user_name", "Unknown"), 
+                    user.get("avatar", ""),
+                    is_online=True
+                )
+        self._load_online_users()
     
     def _on_user_selected_for_chat(self, peer_user_id: str, peer_user_name: str):
         """Handle user selection to start chat"""
@@ -259,7 +288,8 @@ class PetChatApp(QObject):
         if self.ai_service:
             self._on_ai_requested()
 
-    def _on_typing_status(self, sender_name: str, is_typing: bool):
+    def _on_typing_status(self, user_id: str, sender_name: str, is_typing: bool):
+        """Handle typing status from other users"""
         self.window.show_typing_status(sender_name, is_typing)
 
     def _init_ai_service(self):
@@ -414,6 +444,8 @@ class PetChatApp(QObject):
     
     def _on_message_sent(self, sender: str, content: str):
         """Handle sent message"""
+        print(f"[DEBUG] _on_message_sent called: sender={sender}, content={content[:30]}")
+        
         # Store with current user's ID
         self.db.add_message(sender, content, self.current_conversation_id, self.current_user_id)
         
@@ -423,14 +455,15 @@ class PetChatApp(QObject):
         # Send via network
         target = "public"
         if self.current_conversation_id != "public":
-            # For private chat, conversation_id might be the user_id or a composite
-            # Assuming for now we use the conversation_id as target if it's not public
-            # TODO: Better mapping if we use composite conversation IDs
             target = self.current_conversation_id
-            
-        if self.network and self.network.running:
+        
+        print(f"[DEBUG] Network status: network={self.network is not None}, running={self.network.running if self.network else 'N/A'}")
+        
+        if self.network:
             print(f"[DEBUG] Sending message to {target}: {content[:30]}")
             self.network.send_chat_message(target, content)
+        else:
+            print("[DEBUG] Network not available!")
 
         
         # Trigger AI analysis (host only)
