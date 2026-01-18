@@ -67,23 +67,24 @@ class MemoryViewer(QWidget):
     
     def _refresh_display(self):
         """Refresh memory display"""
-        # Clear existing memory cards
+        # Clear existing memory cards - safely handle widget deletion
         while self.memory_layout.count():
             item = self.memory_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        
+        # Reset empty_label reference since it was deleted above
+        self.empty_label = None
         
         if not self.memories:
+            # Create new empty label
             self.empty_label = QLabel("暂无记忆\n对话中的关键信息将自动提取并显示在这里")
             self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.empty_label.setProperty("role", "empty_text")
             self.memory_layout.addWidget(self.empty_label)
         else:
-            # Hide empty label if exists
-            if hasattr(self, 'empty_label') and self.empty_label:
-                self.empty_label.hide()
-            
-            # Add memory cards
+            # Add memory cards (no need to hide empty_label since it's already deleted)
             for memory in self.memories:
                 card = self._create_memory_card(memory)
                 self.memory_layout.addWidget(card)

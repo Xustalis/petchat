@@ -44,14 +44,24 @@ class Theme:
     SECONDARY = "#625B71"
     ACCENT = "#7D5260"
 
-    # Backgrounds - Light Mode
+    # Backgrounds - Light Mode (Modern 3-Column Layout)
     BG_MAIN = "#FFFBFE"       # Main window background
-    BG_ELEVATED = "#F7F2FA"   # Sidebars / Cards (Surface 1)
+    BG_ELEVATED = "#F7F2FA"   # Cards (Surface 1)
     BG_SURFACE = "#ECE6F0"    # Input fields / secondary (M3 Surface Container High)
     BG_MUTED = "#F3EDF7"      # Generic muted background (Surface 2)
     BG_BORDER = "#CAC4D0"     # Darker border (M3 Outline) for better contrast
     BG_HOVER = "#E8DEF8"      # Hover state
     BG_SELECTED = "#E8DEF8"   # Selected state
+    
+    # Modern Layout - Visual Hierarchy
+    SIDEBAR_BG = "#F5F7FA"    # Cool grey-blue for sidebars
+    CHAT_BG = "#FFFFFF"       # Pure white for center chat area
+    CHAT_PATTERN = "#E8E8E8"  # Dot grid pattern color
+    
+    # Gradient colors for user chat bubble
+    BUBBLE_GRADIENT_START = "#7C3AED"  # Vibrant purple
+    BUBBLE_GRADIENT_END = "#A855F7"    # Lighter purple
+    BUBBLE_OTHER_BG = "#F0F0F0"        # Light grey for AI/other messages
 
     # Text Colors - High Contrast
     TEXT_PRIMARY = "#1C1B1F"
@@ -110,8 +120,13 @@ class Theme:
             QDialog {{
                 background-color: {cls.BG_MAIN};
             }}
-            QWidget#central, QWidget#sidebar {{
+            QWidget#central {{
                 background-color: {cls.BG_MAIN};
+            }}
+            /* Left & Right sidebars - Cool grey-blue */
+            QWidget#sidebar {{
+                background-color: {cls.SIDEBAR_BG};
+                border-right: 1px solid {cls.BG_BORDER};
             }}
 
             /* Typography & Colors */
@@ -219,7 +234,15 @@ class Theme:
                 color: {cls.TEXT_SECONDARY};
             }}
 
-            /* Tabs */
+            /* Tabs - Right Sidebar */
+            QTabWidget#right_sidebar {{
+                background-color: {cls.SIDEBAR_BG};
+            }}
+            QTabWidget#right_sidebar::pane {{
+                border: none;
+                background: {cls.SIDEBAR_BG};
+                border-left: 1px solid {cls.BG_BORDER};
+            }}
             QTabWidget::pane {{
                 border: none;
                 background: {cls.BG_MAIN};
@@ -432,33 +455,73 @@ class Theme:
 
             /* --- Specific Widget Styling --- */
             
-            /* Sidebar */
+            /* Sidebar - now using sidebar color for visual hierarchy */
             QWidget#sidebar {{
-                background-color: {cls.BG_ELEVATED};
+                background-color: {cls.SIDEBAR_BG};
                 border-right: 1px solid {cls.BG_BORDER};
             }}
             
-            /* Chat Area */
+            /* Chat Area - Pure white with subtle styling */
             QWidget#chat_container {{
-                background-color: {cls.BG_MAIN}; 
-                /* Note: Gradients are tricky in global stylesheet if dynamic, 
-                   but we can fallback to flat color or handle gradient in code if needed for specific themes.
-                   For now using flat BG to ensure dark mode works reliably. */
+                background-color: {cls.CHAT_BG};
             }}
             
-            /* Message Input area */
-            QWidget#input_container {{
-                background-color: {cls.BG_MAIN};
-                border-top: 1px solid {cls.BG_BORDER};
+            /* Message Display Area - White background */
+            QListWidget#message_display {{
+                background-color: {cls.CHAT_BG};
+                border: none;
             }}
             
-            /* Message Input area */
+            /* ========== MODERN FLOATING INPUT CAPSULE ========== */
             QWidget#input_container {{
-                background-color: {cls.BG_MAIN};
-                border-top: 1px solid {cls.BG_BORDER};
+                background-color: {cls.CHAT_BG};
+                border: none;
+                padding: 8px;
+            }}
+            
+            /* Floating Capsule Input Field */
+            QLineEdit#message_input {{
+                background-color: {cls.SIDEBAR_BG};
+                border: 2px solid {cls.BG_BORDER};
+                border-radius: 24px;
+                padding: 12px 20px;
+                font-size: {fs_md}px;
+                color: {cls.TEXT_PRIMARY};
+                margin: 8px 16px;
+            }}
+            QLineEdit#message_input:focus {{
+                border: 2px solid {cls.PRIMARY};
+                background-color: {cls.CHAT_BG};
+            }}
+            QLineEdit#message_input::placeholder {{
+                color: {cls.TEXT_SECONDARY};
+            }}
+            
+            /* Circular Send Button */
+            QPushButton#send_button {{
+                background-color: {cls.PRIMARY};
+                color: {cls.PRIMARY_TEXT};
+                border: none;
+                border-radius: 22px;
+                min-width: 44px;
+                max-width: 44px;
+                min-height: 44px;
+                max-height: 44px;
+                font-size: 16px;
+                font-weight: bold;
+                margin-right: 16px;
+            }}
+            QPushButton#send_button:hover {{
+                background-color: {cls.PRIMARY_HOVER};
+            }}
+            QPushButton#send_button:pressed {{
+                background-color: {cls.BUBBLE_GRADIENT_START};
             }}
             
             /* Sidebar Lists */
+            QListWidget#room_list, QListWidget#user_list {{
+                background-color: {cls.SIDEBAR_BG};
+            }}
             QListWidget#room_list::item, QListWidget#user_list::item {{
                 padding: 10px 16px;
                 border-radius: {radius_md}px;
@@ -473,20 +536,26 @@ class Theme:
                 background-color: {cls.BG_HOVER};
             }}
             
-            /* Chat Bubbles */
+            /* ========== MODERN GRADIENT CHAT BUBBLES ========== */
+            /* User Message - Purple gradient */
             QLabel[msg_type="me"] {{
-                background-color: {cls.PRIMARY};
-                color: {cls.PRIMARY_TEXT};
-                border-radius: 12px;
-                padding: 10px 14px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {cls.BUBBLE_GRADIENT_START}, 
+                    stop:1 {cls.BUBBLE_GRADIENT_END});
+                color: #FFFFFF;
+                border-radius: 16px;
+                padding: 12px 16px;
+                font-size: {fs_md}px;
             }}
             
+            /* AI/Other Message - Light grey */
             QLabel[msg_type="other"] {{
-                background-color: {cls.BG_SURFACE};
+                background-color: {cls.BUBBLE_OTHER_BG};
                 color: {cls.TEXT_PRIMARY};
-                border-radius: 12px;
-                padding: 10px 14px;
-                border: 1px solid {cls.BG_BORDER};
+                border-radius: 16px;
+                padding: 12px 16px;
+                border: none;
+                font-size: {fs_md}px;
             }}
             
             QLabel[msg_type="time"] {{
@@ -547,6 +616,16 @@ class DarkTheme(Theme):
     BG_HOVER = "#332F37"
     BG_SELECTED = "#4A4458"
     
+    # Modern Layout - Visual Hierarchy (Dark Mode)
+    SIDEBAR_BG = "#1A1A2E"    # Deep blue-grey for sidebars
+    CHAT_BG = "#16161E"       # Slightly lighter dark for chat
+    CHAT_PATTERN = "#2A2A3E"  # Dot grid pattern color (dark)
+    
+    # Gradient colors for user chat bubble (Dark Mode)
+    BUBBLE_GRADIENT_START = "#9333EA"  # Vibrant purple
+    BUBBLE_GRADIENT_END = "#C084FC"    # Lighter purple
+    BUBBLE_OTHER_BG = "#2B2930"        # Dark grey for AI/other messages
+    
     # Text Colors
     TEXT_PRIMARY = "#E6E1E5"
     TEXT_SECONDARY = "#CAC4D0"
@@ -560,4 +639,3 @@ class DarkTheme(Theme):
     SUCCESS = "#8CD69D"
     WARNING = "#DCC486"
     ERROR = "#F2B8B5"
-

@@ -143,16 +143,18 @@ class MainWindow(QMainWindow):
         input_container.setObjectName("input_container")
         
         input_layout = QHBoxLayout()
-        input_layout.setContentsMargins(20, 15, 20, 15)
-        input_layout.setSpacing(10)
+        input_layout.setContentsMargins(8, 12, 8, 16)  # Reduced margins for floating effect
+        input_layout.setSpacing(12)
         
         self.message_input = QLineEdit()
+        self.message_input.setObjectName("message_input")  # For QSS targeting
         self.message_input.setPlaceholderText("输入消息... (输入 /ai 请求AI建议)")
         self.message_input.returnPressed.connect(self._send_message)
         self.message_input.textEdited.connect(self._on_text_edited)
         input_layout.addWidget(self.message_input)
         
-        self.send_button = QPushButton("发送")
+        self.send_button = QPushButton("➤")  # Arrow icon for modern circular button
+        self.send_button.setObjectName("send_button")  # For QSS targeting
         self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_button.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_button)
@@ -164,7 +166,9 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(chat_container)
         left_widget.setLayout(left_layout)
         
+        # Right Sidebar - Tabs for Suggestions and Memory
         right_tabs = QTabWidget()
+        right_tabs.setObjectName("right_sidebar")  # For QSS targeting
         right_tabs.setMaximumWidth(350)
         
         self.suggestion_panel = SuggestionPanel()

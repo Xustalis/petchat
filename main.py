@@ -302,8 +302,14 @@ class PetChatApp(QObject):
     
     def _update_memories_display(self):
         """Update memories display in UI"""
-        memories = self.db.get_memories()
-        self.window.update_memories(memories)
+        try:
+            memories = self.db.get_memories()
+            self.window.update_memories(memories)
+        except RuntimeError as e:
+            # Handle case where Qt widget has been deleted
+            print(f"[WARN] Could not update memories display: {e}")
+        except Exception as e:
+            print(f"[ERROR] Error updating memories display: {e}")
     
     def _on_clear_memories(self):
         """Handle clear memories request"""
