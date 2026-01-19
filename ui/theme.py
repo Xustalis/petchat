@@ -30,6 +30,8 @@ class ThemeManager:
         """Returns the appropriate theme class based on current theme"""
         if cls._current_theme == "dark":
             return DarkTheme
+        elif cls._current_theme == "space":
+            return SpaceTheme
         return Theme
 
 
@@ -91,6 +93,11 @@ class Theme:
     FONT_SIZE_MD = 14
     FONT_SIZE_LG = 16
     FONT_SIZE_XL = 20
+    
+    # Chart Colors (Default to primary)
+    CHART_BG = "#FFFFFF"
+    CHART_LINE_1 = PRIMARY
+    CHART_LINE_2 = SECONDARY
 
     @classmethod
     def get_stylesheet(cls):
@@ -639,3 +646,43 @@ class DarkTheme(Theme):
     SUCCESS = "#8CD69D"
     WARNING = "#DCC486"
     ERROR = "#F2B8B5"
+
+
+class SpaceTheme(DarkTheme):
+    """Deep Space Theme - Modern Midnight Blue"""
+    
+    # Palette
+    PRIMARY = "#38BDF8"       # Sky Blue
+    PRIMARY_HOVER = "#7DD3FC" 
+    PRIMARY_TEXT = "#0F172A"  # Dark text on bright primary
+    
+    SECONDARY = "#64748B"     # Slate 500
+    ACCENT = "#22D3EE"        # Cyan 400
+    
+    # Backgrounds
+    BG_MAIN = "#0F172A"       # Deep Midnight Blue
+    BG_ELEVATED = "#1E293B"   # Slate 800 (Panel BG)
+    BG_SURFACE = "#334155"    # Slate 700 (Inputs)
+    BG_MUTED = "#1E293B"
+    BG_BORDER = "#334155"     # Subtle Border
+    BG_HOVER = "#334155"
+    BG_SELECTED = "#475569"
+    
+    # Visual Hierarchy
+    SIDEBAR_BG = "#0F172A"
+    CHAT_BG = "#0B0B15"       # Even darker for contrast? Or match Main?
+    # Let's keep Chat slightly distinct or same
+    
+    # Chart Specific
+    CHART_BG = "#0F172A"
+    CHART_LINE_1 = "#38BDF8" # Sky Blue
+    CHART_LINE_2 = "#34D399" # Emerald 400
+    
+    # Text
+    TEXT_PRIMARY = "#F1F5F9"  # Slate 100
+    TEXT_SECONDARY = "#94A3B8"# Slate 400
+    TEXT_DISABLED = "#64748B"
+    
+    # Gradients
+    BUBBLE_GRADIENT_START = "#0EA5E9" 
+    BUBBLE_GRADIENT_END = "#2563EB"

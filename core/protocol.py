@@ -36,6 +36,10 @@ class MessageType(str, Enum):
     # Legacy AI - for backward compatibility
     AI_REQUEST = "ai_request"  # Old client request format
 
+    # Heartbeat
+    PING = "ping"
+    PONG = "pong"
+
 
 @dataclass
 class AIAnalysisRequest:

@@ -4,6 +4,7 @@ import socket
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup, QMessageBox
 from PyQt6.QtCore import Qt, QTimer, QObject
 from core.network import NetworkManager
+from core.crash_reporter import CrashReporter
 from core.database import Database
 # Note: AIService removed - AI is now server-side only
 from core.config_manager import ConfigManager
@@ -152,7 +153,9 @@ class PetChatApp(QObject):
         # AI signals from server
         self.network.ai_suggestion_received.connect(self._on_server_ai_suggestion)
         self.network.ai_emotion_received.connect(self._on_server_ai_emotion)
+        self.network.ai_emotion_received.connect(self._on_server_ai_emotion)
         self.network.ai_memory_received.connect(self._on_server_ai_memory)
+        self.network.reconnection_status.connect(self._on_reconnection_status)
         
         # Window signals
         self.window.message_sent.connect(self._on_message_sent)
@@ -191,6 +194,13 @@ class PetChatApp(QObject):
         self.window.update_status(f"Error: {error_msg}")
         # Optional: log error to console or file
         print(f"Network Error: {error_msg}")
+
+    def _on_reconnection_status(self, status: str):
+        """Handle reconnection status updates"""
+        self.window.update_status(status)
+        if "Reconnecting" in status:
+            self.window.add_message("System", f"🔄 {status}")
+
 
     def _on_remote_suggestion(self, suggestion: dict):
         """Handle suggestion sent from peer"""
@@ -584,4 +594,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Install crash reporter immediately
+    reporter = CrashReporter()
+    reporter.install()
     main()

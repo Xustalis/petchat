@@ -9,7 +9,7 @@ import json
 import time
 from typing import Dict, Optional, List, Any
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, pyqtSignal, QThread, QRunnable, QThreadPool, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, QThread, QRunnable, QThreadPool, pyqtSlot, QTimer
 
 from ui.server_window import ServerMainWindow
 from core.protocol import (
@@ -18,7 +18,7 @@ from core.protocol import (
     pack_message, unpack_header, verify_crc
 )
 from core.ai_session_manager import AISessionManager
-# ai_service imported dynamically or initialized later
+from core.server_core import PetChatServer, ServerCallbacks
 
 # Global thread pool
 thread_pool = None
@@ -46,10 +46,33 @@ class AIWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
 
+class PyQtServerCallbacks(ServerCallbacks):
+    """Bridge between Core Server events and PyQt Signals"""
+    def __init__(self, signals):
+        self.signals = signals
+        
+    def on_log(self, message):
+        self.signals.log_signal.emit(message)
+    
+    def on_stats_update(self, msg_count, ai_req_count):
+        self.signals.stats_signal.emit(msg_count, ai_req_count)
+    
+    def on_client_connected(self, user_id, name, address):
+        self.signals.client_connected.emit(user_id, name, address)
+        
+    def on_client_disconnected(self, user_id):
+        self.signals.client_disconnected.emit(user_id)
+        
+    def on_ai_request(self, user_id, request):
+        self.signals.ai_request_received.emit(user_id, request)
+    
+    def on_error(self, error):
+        self.signals.log_signal.emit(f"ERROR: {error}")
+
 class ServerThread(QThread):
     """
     Background thread for TCP Server.
-    Handles connections and message routing.
+    Wraps the platform-agnostic PetChatServer.
     """
     # Signals to communicate with Main Thread (GUI/Controller)
     log_signal = pyqtSignal(str)
@@ -60,225 +83,44 @@ class ServerThread(QThread):
     
     def __init__(self, host="0.0.0.0", port=8888):
         super().__init__()
-        self.host = host
-        self.port = port
-        self.running = False
-        self.server_socket: Optional[socket.socket] = None
-        
-        self.clients: Dict[str, Dict] = {}
-        self.clients_lock = threading.Lock()
-        
-        self.msg_count = 0
-        self.ai_req_count = 0
+        self.callbacks = PyQtServerCallbacks(self)
+        self.core_server = PetChatServer(host, port, self.callbacks)
         
     def run(self):
         """Main server loop"""
-        try:
-            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.server_socket.bind((self.host, self.port))
-            self.server_socket.listen(10)
-            
-            self.running = True
-            self.log_signal.emit(f"Server started on {self.host}:{self.port}")
-            
-            while self.running:
-                try:
-                    # Blocking accept
-                    client_sock, addr = self.server_socket.accept()
-                    # Determine client_id later during registration
-                    
-                    # Spawn handling thread (standard python thread)
-                    t = threading.Thread(
-                        target=self._handle_client_connection,
-                        args=(client_sock, addr),
-                        daemon=True
-                    )
-                    t.start()
-                    
-                except OSError:
-                    # Socket closed
-                    break
-                    
-        except Exception as e:
-            self.log_signal.emit(f"Server error: {e}")
-        finally:
-            self.stop()
-            self.log_signal.emit("Server stopped")
+        # Start the core server
+        self.core_server.start()
+        
+        # Keep this thread alive while server is running
+        # The actual accept loop is in a daemon thread managed by core_server
+        # We perform a simple wait loop here
+        while self.core_server.running:
+            self.msleep(100) # Sleep 100ms
+        
+        # If we exit loop, ensure server is stopped
+        self.core_server.stop()
 
     def stop(self):
-        self.running = False
-        if self.server_socket:
-            try:
-                self.server_socket.close()
-            except:
-                pass
-        # Close all client sockets
-        with self.clients_lock:
-            for client in self.clients.values():
-                try:
-                    client["socket"].close()
-                except:
-                    pass
-            self.clients.clear()
+        self.core_server.stop()
+        self.quit()
+        self.wait()
 
     def send_to_client(self, user_id: str, message: dict):
-        """Send message to specific client (Called from Main Thread)"""
-        with self.clients_lock:
-            client = self.clients.get(user_id)
-            if client:
-                self._send_raw(client["socket"], message)
+        """Send message to specific client"""
+        self.core_server.send_to_client(user_id, message)
 
     def disconnect_user(self, user_id: str):
         """Force disconnect a user"""
-        with self.clients_lock:
-            client = self.clients.get(user_id)
-            if client:
-                try:
-                    client["socket"].close()
-                except:
-                    pass
-                # Cleanup will happen in _handle_client_connection loop
-
-    # --- Internal methods running in threads ---
-
-    def _handle_client_connection(self, sock: socket.socket, addr):
-        user_id = None
-        try:
-            while self.running:
-                header = self._recv_exact(sock, HEADER_SIZE)
-                if not header: break
-                
-                length, expected_crc = unpack_header(header)
-                payload = self._recv_exact(sock, length)
-                if not payload: break
-                
-                if not verify_crc(payload, expected_crc):
-                    continue
-                
-                try:
-                    message = json.loads(payload.decode('utf-8'))
-                except:
-                    continue
-                    
-                msg_type = message.get("type")
-                
-                # Handle Register
-                if msg_type == MessageType.REGISTER.value:
-                    user_id = self._handle_register(sock, message, addr)
-                
-                # Handle Chat
-                elif msg_type == MessageType.CHAT_MESSAGE.value:
-                    self._handle_chat(message)
-                    self.msg_count += 1
-                    self.stats_signal.emit(self.msg_count, self.ai_req_count)
-                
-                # Handle AI Request
-                elif msg_type == MessageType.AI_ANALYSIS_REQUEST.value:
-                    if user_id:
-                        self.ai_req_count += 1
-                        self.stats_signal.emit(self.msg_count, self.ai_req_count)
-                        self.ai_request_received.emit(user_id, message)
-                
-                # Handle other
-                elif msg_type == MessageType.TYPING_STATUS.value:
-                    self._broadcast(message, exclude=user_id)
-                    
-        except Exception as e:
-            self.log_signal.emit(f"Error handling client {addr}: {e}")
-        finally:
-            if user_id:
-                self._handle_disconnect(user_id)
-            try:
-                sock.close()
-            except:
-                pass
-
-    def _recv_exact(self, sock, n):
-        data = b''
-        while len(data) < n:
-            try:
-                chunk = sock.recv(n - len(data))
-                if not chunk: return None
-                data += chunk
-            except:
-                return None
-        return data
-
-    def _send_raw(self, sock, message):
-        try:
-            packet = pack_message(message)
-            sock.sendall(packet)
-        except:
-            pass
-
-    def _handle_register(self, sock, message, addr):
-        user_id = message.get("user_id")
-        name = message.get("user_name", "Unknown")
-        avatar = message.get("avatar", "")
+        self.core_server.disconnect_user(user_id)
+    
+    # Expose stats properties for Controller
+    @property
+    def msg_count(self):
+        return self.core_server.msg_count
         
-        with self.clients_lock:
-            self.clients[user_id] = {
-                "socket": sock,
-                "name": name,
-                "avatar": avatar,
-                "addr": addr
-            }
-        
-        self.log_signal.emit(f"User registered: {name} ({user_id})")
-        self.client_connected.emit(user_id, name, addr)
-        
-        # Notify others
-        self._broadcast({
-            "type": MessageType.USER_JOINED.value,
-            "user_id": user_id,
-            "user_name": name,
-            "avatar": avatar
-        }, exclude=user_id)
-        
-        # Send online users
-        users = []
-        with self.clients_lock:
-            for uid, info in self.clients.items():
-                if uid != user_id:
-                    users.append({
-                        "user_id": uid,
-                        "user_name": info["name"],
-                        "avatar": info["avatar"]
-                    })
-        self._send_raw(sock, {"type": MessageType.ONLINE_USERS.value, "users": users})
-        return user_id
-
-    def _handle_disconnect(self, user_id):
-        with self.clients_lock:
-            if user_id in self.clients:
-                del self.clients[user_id]
-        
-        self.log_signal.emit(f"User disconnected: {user_id}")
-        self.client_disconnected.emit(user_id)
-        
-        self._broadcast({
-            "type": MessageType.USER_LEFT.value,
-            "user_id": user_id
-        })
-
-    def _handle_chat(self, message):
-        target = message.get("target", "public")
-        sender = message.get("sender_id")
-        
-        if target == "public":
-            self._broadcast(message, exclude=sender)
-        else:
-            with self.clients_lock:
-                client = self.clients.get(target)
-                if client:
-                    self._send_raw(client["socket"], message)
-
-    def _broadcast(self, message, exclude=None):
-        with self.clients_lock:
-            for uid, client in self.clients.items():
-                if uid == exclude: continue
-                self._send_raw(client["socket"], message)
+    @property
+    def ai_req_count(self):
+        return self.core_server.ai_req_count
 
 
 class ServerController(QObject):
@@ -300,9 +142,19 @@ class ServerController(QObject):
         self.window.stop_server_requested.connect(self.stop_server)
         self.window.api_config_changed.connect(self.update_ai_config)
         self.window.disconnect_user_requested.connect(self.disconnect_user)
-        self.window.refresh_stats_requested.connect(self.refresh_stats)
-        self.window.test_ai_requested.connect(self.test_ai_connection)
+        self.window.disconnect_user_requested.connect(self.disconnect_user)
+        # self.window.refresh_stats_requested.connect(self.refresh_stats) # Removed from UI
+        # self.window.test_ai_requested.connect(self.test_ai_connection) # Removed from UI
         self.window.closeEvent = self.on_close
+
+        # Rate Calculation Timer
+        self.stats_timer = QTimer()
+        self.stats_timer.setInterval(1000)
+        self.stats_timer.timeout.connect(self._calculate_rates)
+        
+        self.last_msg_count = 0
+        self.last_ai_count = 0
+        self.last_time = time.time()
 
     def _load_config(self):
         """Load config from server_config.json and populate UI"""
@@ -364,12 +216,13 @@ class ServerController(QObject):
             
         self.server_thread = ServerThread(port=port)
         self.server_thread.log_signal.connect(self.window.log_message)
-        self.server_thread.stats_signal.connect(self.window.update_stats)
-        self.server_thread.client_connected.connect(self.window.add_connection)
-        self.server_thread.client_disconnected.connect(self.window.remove_connection)
+        # self.server_thread.stats_signal.connect(self.window.update_stats) # Handled by timer now
+        self.server_thread.client_connected.connect(self.window.add_client)
+        self.server_thread.client_disconnected.connect(self.window.remove_client)
         self.server_thread.ai_request_received.connect(self.handle_ai_request)
         
         self.server_thread.start()
+        self.stats_timer.start()
         self.window.update_server_status(True)
 
     def stop_server(self):
@@ -377,7 +230,9 @@ class ServerController(QObject):
             self.server_thread.stop()
             self.server_thread.quit()
             self.server_thread.wait()
+            self.server_thread.wait()
             self.server_thread = None
+        self.stats_timer.stop()
         self.window.update_server_status(False)
 
     def update_ai_config(self, key, base, model):
@@ -547,6 +402,26 @@ class ServerController(QObject):
         # self.session_manager.track_usage(cid, tokens) # Need token usage from AIService to track strictly
         self.window.update_token_stats(self.session_manager.get_usage())
         self.window.log_message(f"AI processed for {user_id} (Conv: {cid})")
+
+    def _calculate_rates(self):
+        if not self.server_thread: return
+        
+        current_time = time.time()
+        dt = current_time - self.last_time
+        if dt < 0.1: return
+        
+        msg_count = self.server_thread.msg_count
+        ai_count = self.server_thread.ai_req_count
+        
+        msg_rate = (msg_count - self.last_msg_count) / dt
+        ai_rate = (ai_count - self.last_ai_count) / dt * 60 # per minute
+        
+        self.last_msg_count = msg_count
+        self.last_ai_count = ai_count
+        self.last_time = current_time
+        
+        self.window.update_charts(msg_rate, ai_rate)
+        self.window.update_stats(msg_count, ai_count)
 
     def on_close(self, event):
         self.stop_server()

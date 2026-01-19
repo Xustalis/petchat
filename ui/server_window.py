@@ -1,305 +1,409 @@
-"""
-Server Dashboard UI
-PyQt6 implementation of the server management interface.
-"""
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QTabWidget, QListWidget, QLabel, QPushButton, 
-                             QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QFormLayout, QLineEdit, QGroupBox, QSplitter)
-from PyQt6.QtCore import Qt, pyqtSignal
-from ui.theme import Theme
+import sys
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QPushButton, QTextEdit, QSplitter, 
+    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QFrame, QMessageBox, QGroupBox, QLineEdit, QSizePolicy
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
+from PyQt6.QtGui import QColor, QFont, QPainter, QBrush, QIcon
+
+try:
+    import pyqtgraph as pg
+    HAS_PYQTGRAPH = True
+except ImportError:
+    HAS_PYQTGRAPH = False
+
+from ui.theme import ThemeManager, SpaceTheme
+
+class StatusLed(QWidget):
+    """Custom LED Indicator for Server Status"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(24, 24)
+        self._active = False
+        self.setToolTip("服务状态")
+        
+    def set_status(self, active: bool):
+        self._active = active
+        self.update()
+        self.setToolTip("服务运行中" if active else "服务已停止")
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Color: Green (Active) or Red (Inactive)
+        # Using simple colors or theme
+        color = "#22C55E" if self._active else "#EF4444" 
+        
+        # Glow effect (outer ring opacity)
+        if self._active:
+            painter.setBrush(QBrush(QColor(color)))
+            painter.setOpacity(0.3)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(0, 0, 24, 24)
+            painter.setOpacity(1.0)
+        
+        # Core
+        painter.setBrush(QBrush(QColor(color)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        center = 12
+        radius = 6
+        painter.drawEllipse(center - radius, center - radius, radius * 2, radius * 2)
+
+class GraphsPanel(QWidget):
+    """Panel containing real-time performance charts"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Background fallback
+        self.setStyleSheet(f"background-color: {SpaceTheme.CHART_BG}; border-radius: 8px;")
+        
+        if not HAS_PYQTGRAPH:
+            self._setup_placeholder()
+            return
+
+        # Configure PyQtGraph global options for Space Theme
+        pg.setConfigOption('background', SpaceTheme.CHART_BG)
+        pg.setConfigOption('foreground', SpaceTheme.TEXT_SECONDARY)
+        pg.setConfigOptions(antialias=True)
+        
+        self.graph_widget = pg.GraphicsLayoutWidget()
+        self.layout.addWidget(self.graph_widget)
+        
+        # Plot 1: Message Rate
+        self.p1 = self.graph_widget.addPlot(title="消息速率 (msg/s)")
+        self.p1.showGrid(x=True, y=True, alpha=0.3)
+        self.curve1 = self.p1.plot(pen=pg.mkPen(color=SpaceTheme.CHART_LINE_1, width=2))
+        
+        # Plot 2: AI Requests
+        self.graph_widget.nextRow()
+        self.p2 = self.graph_widget.addPlot(title="AI 请求频率 (req/min)")
+        self.p2.showGrid(x=True, y=True, alpha=0.3)
+        self.curve2 = self.p2.plot(pen=pg.mkPen(color=SpaceTheme.CHART_LINE_2, width=2))
+        
+        # Data buffers
+        self.data_limit = 60
+        self.rate_history = [0] * self.data_limit
+        self.ai_history = [0] * self.data_limit
+
+    def _setup_placeholder(self):
+        container = QFrame()
+        vbox = QVBoxLayout(container)
+        vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        lbl_text = QLabel("图表组件未安装")
+        lbl_text.setStyleSheet(f"color: {SpaceTheme.TEXT_DISABLED}; font-size: 16px; font-weight: bold;")
+        lbl_msg = QLabel("请运行: pip install pyqtgraph")
+        lbl_msg.setStyleSheet(f"color: {SpaceTheme.TEXT_DISABLED}; font-size: 12px;")
+        
+        vbox.addWidget(lbl_text)
+        vbox.addWidget(lbl_msg)
+        self.layout.addWidget(container)
+
+    def update_charts(self, msg_rate, ai_rate):
+        if not HAS_PYQTGRAPH: return
+        
+        self.rate_history.append(msg_rate)
+        self.rate_history = self.rate_history[-self.data_limit:]
+        
+        self.ai_history.append(ai_rate)
+        self.ai_history = self.ai_history[-self.data_limit:]
+        
+        self.curve1.setData(self.rate_history)
+        self.curve2.setData(self.ai_history)
 
 class ServerMainWindow(QMainWindow):
-    """Server Dashboard Window"""
-    
-    # Signals for server control
+    """
+    Modern Server Dashboard with Deep Space Theme (Localized).
+    """
+    start_server_requested = pyqtSignal(int)
     stop_server_requested = pyqtSignal()
-    start_server_requested = pyqtSignal(int)  # port
-    api_config_changed = pyqtSignal(str, str, str)  # key, base, model
-    disconnect_user_requested = pyqtSignal(str) # user_id
+    api_config_changed = pyqtSignal(str, str, str)
+    disconnect_user_requested = pyqtSignal(str)
+    
+    # Optional signals
     refresh_stats_requested = pyqtSignal()
-    test_ai_requested = pyqtSignal(str, str, str) # key, base, model
+    test_ai_requested = pyqtSignal(str, str, str)
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PetChat 服务端管理")
-        self.resize(1000, 700)
         
-        self.active_connections = {}
+        # Force Space Theme
+        ThemeManager.set_theme("space")
+        self.theme = SpaceTheme
         
-        self._init_ui()
+        self.setWindowTitle("PetChat 服务端控制台 [Core]")
+        self.resize(1000, 750)
+        self.setStyleSheet(self.theme.get_stylesheet())
         
-    def _init_ui(self):
-        """Initialize UI components"""
-        self.setStyleSheet(Theme.get_stylesheet())
+        self.setup_ui()
         
+    def setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
         
-        # Header
-        header_layout = QHBoxLayout()
-        self.status_label = QLabel("服务器状态: 已停止")
-        self.status_label.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {Theme.ERROR};")
-        header_layout.addWidget(self.status_label)
+        # --- Header Section (Redesigned) ---
+        header = QFrame()
+        header.setFixedHeight(60)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Title (Left)
+        title_label = QLabel("PetChat 服务端")
+        title_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {self.theme.PRIMARY}; font-family: 'Segoe UI', 'Microsoft YaHei';")
+        header_layout.addWidget(title_label)
         
         header_layout.addStretch()
         
-        # Global Server Control in Header
+        # Status Area (Right)
+        status_container = QWidget()
+        status_layout = QHBoxLayout(status_container)
+        status_layout.setContentsMargins(0,0,0,0)
+        status_layout.setSpacing(12)
+        
+        self.status_led = StatusLed()
+        status_layout.addWidget(self.status_led)
+        
+        self.status_label = QLabel("离线")
+        self.status_label.setStyleSheet(f"color: {self.theme.TEXT_SECONDARY}; font-weight: bold;")
+        status_layout.addWidget(self.status_label)
+        
+        # Buttons
+        self.btn_start = QPushButton("启动服务")
+        self.btn_start.setFixedWidth(100)
+        self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_start.clicked.connect(self.on_start_clicked)
+        status_layout.addWidget(self.btn_start)
+        
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setFixedWidth(80)
+        self.btn_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_stop.setStyleSheet(f"background-color: {self.theme.ERROR}; border-color: {self.theme.ERROR};")
+        self.btn_stop.clicked.connect(self.on_stop_clicked)
+        self.btn_stop.setEnabled(False)
+        status_layout.addWidget(self.btn_stop)
+        
+        header_layout.addWidget(status_container)
+        main_layout.addWidget(header)
+        
+        # --- Splitter Section ---
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(2)
+        main_layout.addWidget(splitter)
+        
+        # Top: Graphs
+        self.graphs_panel = GraphsPanel()
+        self.graphs_panel.setMinimumHeight(240)
+        splitter.addWidget(self.graphs_panel)
+        
+        # Bottom: Tabs
+        tabs = QTabWidget()
+        tabs.setObjectName("right_sidebar")
+        splitter.addWidget(tabs)
+        
+        # Tab 1: Logs
+        self.log_viewer = QTextEdit()
+        self.log_viewer.setReadOnly(True)
+        self.log_viewer.setStyleSheet(f"""
+            font-family: Consolas, 'Courier New', monospace; 
+            font-size: 13px; 
+            background-color: {self.theme.BG_ELEVATED}; 
+            color: {self.theme.TEXT_SECONDARY}; 
+            border: 1px solid {self.theme.BG_BORDER};
+            padding: 8px;
+        """)
+        tabs.addTab(self.log_viewer, "系统日志")
+        
+        # Tab 2: Clients
+        self.clients_table = QTableWidget()
+        self.clients_table.setColumnCount(4)
+        self.clients_table.setHorizontalHeaderLabels(["用户 ID", "昵称", "IP 地址", "加入时间"])
+        self.clients_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.clients_table.verticalHeader().setVisible(False)
+        self.clients_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.clients_table.setStyleSheet(f"background-color: {self.theme.BG_ELEVATED}; border: none;")
+        tabs.addTab(self.clients_table, "在线客户端")
+        
+        # Tab 3: Configuration (Redesigned)
+        config_tab = QWidget()
+        config_layout = QVBoxLayout(config_tab)
+        config_layout.setContentsMargins(20, 20, 20, 20)
+        config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        # Server Settings
+        server_grp = QGroupBox("基础设置")
+        server_grp.setStyleSheet(f"QGroupBox {{ color: {self.theme.PRIMARY}; font-weight: bold; border: 1px solid {self.theme.BG_BORDER}; border-radius: 6px; margin-top: 20px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}")
+        svr_grid = QGridLayout(server_grp)
+        
+        svr_grid.addWidget(QLabel("服务端口:"), 0, 0)
         self.port_input = QLineEdit("8888")
-        self.port_input.setPlaceholderText("端口")
-        self.port_input.setFixedWidth(60)
-        self.port_input.setToolTip("服务器端口")
-        header_layout.addWidget(QLabel("端口:"))
-        header_layout.addWidget(self.port_input)
+        self.port_input.setFixedWidth(120)
+        svr_grid.addWidget(self.port_input, 0, 1)
+        svr_grid.setColumnStretch(2, 1) # Spacer
         
-        self.start_btn = QPushButton("启动服务器")
-        self.start_btn.clicked.connect(self._on_start_stop_clicked)
-        self.start_btn.setCheckable(True)
-        self.start_btn.setStyleSheet(f"background-color: {Theme.SUCCESS}; color: white; border-radius: 4px; padding: 6px 16px;")
-        header_layout.addWidget(self.start_btn)
+        config_layout.addWidget(server_grp)
         
-        layout.addLayout(header_layout)
+        # AI Settings
+        ai_grp = QGroupBox("AI 模型配置")
+        ai_grp.setStyleSheet(server_grp.styleSheet())
+        ai_grid = QGridLayout(ai_grp)
+        ai_grid.setVerticalSpacing(12)
         
-        # Tabs
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
-        
-        # Overview Tab
-        self.overview_tab = QWidget()
-        self._init_overview_tab()
-        self.tabs.addTab(self.overview_tab, "概览")
-        
-        # Connections Tab
-        self.connections_tab = QWidget()
-        self._init_connections_tab()
-        self.tabs.addTab(self.connections_tab, "连接管理")
-        
-        # AI Config Tab
-        self.ai_tab = QWidget()
-        self._init_ai_tab()
-        self.tabs.addTab(self.ai_tab, "AI 配置 & 统计")
-        
-        # Logs Tab
-        self.logs_tab = QWidget()
-        self._init_logs_tab()
-        self.tabs.addTab(self.logs_tab, "系统日志")
-
-    def _init_overview_tab(self):
-        layout = QVBoxLayout(self.overview_tab)
-        
-        # Stats Cards
-        stats_layout = QHBoxLayout()
-        
-        self.online_count_card = self._create_stat_card("在线用户", "0")
-        stats_layout.addWidget(self.online_count_card)
-        
-        self.message_count_card = self._create_stat_card("消息转发", "0")
-        stats_layout.addWidget(self.message_count_card)
-        
-        self.ai_req_card = self._create_stat_card("AI 请求数", "0")
-        stats_layout.addWidget(self.ai_req_card)
-        
-        layout.addLayout(stats_layout)
-        layout.addStretch()
-        
-        # Refresh Button
-        refresh_btn = QPushButton("刷新数据")
-        refresh_btn.setStyleSheet(f"background-color: {Theme.SECONDARY}; color: white; margin-bottom: 20px;")
-        refresh_btn.clicked.connect(lambda: self.refresh_stats_requested.emit())
-        layout.addWidget(refresh_btn)
-
-    def _create_stat_card(self, title, value):
-        card = QGroupBox()
-        layout = QVBoxLayout()
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;")
-        val_lbl = QLabel(value)
-        val_lbl.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 24px; font-weight: bold;")
-        val_lbl.setObjectName("value_label") # For easy finding later
-        layout.addWidget(title_lbl)
-        layout.addWidget(val_lbl)
-        card.setLayout(layout)
-        return card
-        
-    def _init_connections_tab(self):
-        layout = QVBoxLayout(self.connections_tab)
-        
-        self.connections_table = QTableWidget()
-        self.connections_table.setColumnCount(4)
-        self.connections_table.setHorizontalHeaderLabels(["用户 ID", "昵称", "IP 地址", "操作"])
-        self.connections_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.connections_table)
-        
-    def _init_ai_tab(self):
-        layout = QVBoxLayout(self.ai_tab)
-        
-        # Config
-        config_group = QGroupBox("OpenAI / Local LLM 配置")
-        form_layout = QFormLayout()
-        
+        ai_grid.addWidget(QLabel("API 密钥:"), 0, 0)
         self.api_key_input = QLineEdit()
+        self.api_key_input.setPlaceholderText("sk-...")
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("LM Studio 可留空，OpenAI 填 sk-...")
-        form_layout.addRow("API Key:", self.api_key_input)
+        ai_grid.addWidget(self.api_key_input, 0, 1)
         
+        ai_grid.addWidget(QLabel("接口地址:"), 1, 0)
         self.api_base_input = QLineEdit()
-        self.api_base_input.setPlaceholderText("https://api.openai.com/v1 或 http://localhost:1234/v1")
-        form_layout.addRow("Base URL:", self.api_base_input)
+        self.api_base_input.setPlaceholderText("https://api.openai.com/v1")
+        ai_grid.addWidget(self.api_base_input, 1, 1)
         
-        # Add Model Name input
-        self.model_input = QLineEdit()
-        self.model_input.setPlaceholderText("gpt-4o-mini 或 qwen2.5-7b-instruct")
-        form_layout.addRow("模型名称:", self.model_input)
+        ai_grid.addWidget(QLabel("模型名称:"), 2, 0)
+        self.model_input = QLineEdit("gpt-4o-mini")
+        ai_grid.addWidget(self.model_input, 2, 1)
         
-        apply_btn = QPushButton("应用配置")
-        apply_btn.clicked.connect(self._on_apply_config)
+        config_layout.addWidget(ai_grp)
         
-        # Test Connection Button
-        self.test_ai_btn = QPushButton("测试连接")
-        self.test_ai_btn.clicked.connect(self._on_test_ai_connection)
-        self.test_ai_btn.setStyleSheet(f"background-color: {Theme.BG_BORDER}; color: {Theme.TEXT_PRIMARY};")
-
+        # Action Buttons
         btn_layout = QHBoxLayout()
-        btn_layout.addWidget(apply_btn)
-        btn_layout.addWidget(self.test_ai_btn)
+        btn_layout.setSpacing(16)
         
-        # Feedback Label
-        self.ai_msg_label = QLabel("")
-        self.ai_msg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ai_msg_label.setWordWrap(True)
-        self.ai_msg_label.setStyleSheet("font-size: 13px; margin-top: 10px;")
+        btn_apply = QPushButton("应用配置")
+        btn_apply.setFixedWidth(120)
+        btn_apply.clicked.connect(self.on_apply_config)
+        btn_layout.addWidget(btn_apply)
         
-        config_group.setLayout(form_layout)
-        config_group.layout().addRow("", btn_layout)
-        config_group.layout().addRow(self.ai_msg_label)
-        layout.addWidget(config_group)
+        btn_test = QPushButton("测试连接")
+        btn_test.setFixedWidth(120)
+        btn_test.setStyleSheet(f"background-color: {self.theme.BG_SURFACE}; border: 1px solid {self.theme.PRIMARY}; color: {self.theme.PRIMARY};")
+        btn_test.clicked.connect(self.on_test_ai)
+        btn_layout.addWidget(btn_test)
         
-        # Token Stats
-        stats_group = QGroupBox("Token 使用统计 (估算)")
-        stats_layout = QVBoxLayout()
-        self.token_table = QTableWidget()
-        self.token_table.setColumnCount(2)
-        self.token_table.setHorizontalHeaderLabels(["会话 ID", "Token 使用量"])
-        self.token_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        stats_layout.addWidget(self.token_table)
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
+        btn_layout.addStretch()
+        config_layout.addLayout(btn_layout)
         
-    def _init_logs_tab(self):
-        layout = QVBoxLayout(self.logs_tab)
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
-        self.log_area.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
-        layout.addWidget(self.log_area)
+        tabs.addTab(config_tab, "设置")
+
+        # Tab 4: Statistics
+        self.stats_label = QLabel("等待服务启动...")
+        self.stats_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.stats_label.setStyleSheet("padding: 20px; font-size: 14px; line-height: 1.5;")
+        tabs.addTab(self.stats_label, "统计信息")
         
-    def log_message(self, message: str):
-        """Add message to log area"""
-        self.log_area.append(message)
-        # Scroll to bottom
-        sb = self.log_area.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        splitter.setSizes([280, 470])
+
+    def on_apply_config(self):
+        self.api_config_changed.emit(
+            self.api_key_input.text(),
+            self.api_base_input.text(),
+            self.model_input.text()
+        )
+        QMessageBox.information(self, "配置已保存", "AI 配置已更新并保存。")
         
+    def on_test_ai(self):
+        self.test_ai_requested.emit(
+            self.api_key_input.text(),
+            self.api_base_input.text(),
+            self.model_input.text()
+        )
+
+    def show_ai_result(self, message, is_success):
+        if is_success:
+             QMessageBox.information(self, "测试通过", message)
+        else:
+             QMessageBox.warning(self, "测试失败", message)
+
+    def on_start_clicked(self):
+        try:
+            port = int(self.port_input.text())
+            self.start_server_requested.emit(port)
+        except ValueError:
+            QMessageBox.warning(self, "输入错误", "端口必须是数字")
+        
+    def on_stop_clicked(self):
+        self.stop_server_requested.emit()
+
     def update_server_status(self, running: bool):
+        self.status_led.set_status(running)
         if running:
-            self.status_label.setText("服务器状态: 运行中")
-            self.status_label.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {Theme.SUCCESS};")
-            self.start_btn.setText("停止服务器")
-            self.start_btn.setStyleSheet(f"background-color: {Theme.ERROR}; color: white; border-radius: 4px; padding: 6px 16px;")
-            self.start_btn.setChecked(True)
-            self.port_input.setEnabled(False)
+            self.status_label.setText("运行中")
+            self.status_label.setStyleSheet(f"color: {self.theme.SUCCESS}; font-weight: bold;")
+            self.btn_start.setEnabled(False)
+            self.btn_stop.setEnabled(True)
+            self.log_message("服务状态: 运行中")
         else:
-            self.status_label.setText("服务器状态: 已停止")
-            self.status_label.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {Theme.ERROR};")
-            self.start_btn.setText("启动服务器")
-            self.start_btn.setStyleSheet(f"background-color: {Theme.SUCCESS}; color: white; border-radius: 4px; padding: 6px 16px;")
-            self.start_btn.setChecked(False)
-            self.port_input.setEnabled(True)
+            self.status_label.setText("已停止")
+            self.status_label.setStyleSheet(f"color: {self.theme.TEXT_SECONDARY}; font-weight: bold;")
+            self.btn_start.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.log_message("服务状态: 已停止")
 
-    def _on_start_stop_clicked(self):
-        # Button is checkable, so check state reflects desired state
-        if self.start_btn.isChecked():
-            try:
-                port = int(self.port_input.text())
-                self.start_server_requested.emit(port)
-            except ValueError:
-                self.log_message("无效的端口号")
-                self.start_btn.setChecked(False)
-        else:
-            self.stop_server_requested.emit()
-            
-    def _on_test_ai_connection(self):
-        """Emit test connection with current input values"""
-        self.ai_msg_label.setText("正在测试连接... (超时时间 5s)")
-        self.ai_msg_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY};")
-        self.test_ai_btn.setEnabled(False)
-        
-        key = self.api_key_input.text().strip()
-        base = self.api_base_input.text().strip()
-        model = self.model_input.text().strip()
-        self.test_ai_requested.emit(key, base, model)
+    def log_message(self, message: str):
+        from datetime import datetime
+        timestamp = datetime.now().strftime("[%H:%M:%S]")
+        self.log_viewer.append(f"{timestamp} {message}")
+        cursor = self.log_viewer.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.log_viewer.setTextCursor(cursor)
 
-    def _on_apply_config(self):
-        key = self.api_key_input.text().strip()
-        base = self.api_base_input.text().strip()
-        model = self.model_input.text().strip()
-        self.api_config_changed.emit(key, base, model)
-        # Show immediate feedback
-        self.ai_msg_label.setText("配置已应用 (请点击测试连接验证)")
-        self.ai_msg_label.setStyleSheet(f"color: {Theme.SUCCESS}; font-weight: bold;")
-
-    def show_ai_result(self, message: str, success: bool):
-        """Display result in AI tab"""
-        self.test_ai_btn.setEnabled(True)
-        color = Theme.SUCCESS if success else Theme.ERROR
-        self.ai_msg_label.setText(message)
-        self.ai_msg_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+    def update_stats(self, msg_count, ai_req_count):
+        current_text = self.stats_label.text().split("\n\nToken Usage:")[0] # English legacy check
+        if "Token Usage" not in current_text and "Token 消耗" not in current_text:
+             # Basic update
+             pass
+             
+        # Reconstruct
+        token_part = ""
+        if "Token 消耗" in self.stats_label.text():
+             token_part = "\n\n" + self.stats_label.text().split("\n\nToken 消耗")[1]
         
-    def add_connection(self, user_id, user_name, address):
-        """Add user to connections table"""
-        row = self.connections_table.rowCount()
-        self.connections_table.insertRow(row)
-        
-        self.connections_table.setItem(row, 0, QTableWidgetItem(user_id))
-        self.connections_table.setItem(row, 1, QTableWidgetItem(user_name))
-        
-        addr_str = f"{address[0]}:{address[1]}"
-        self.connections_table.setItem(row, 2, QTableWidgetItem(addr_str))
-        
-        disconnect_btn = QPushButton("断开连接")
-        disconnect_btn.setStyleSheet("background-color: #DC3545; color: white; padding: 2px;")
-        disconnect_btn.clicked.connect(lambda: self.disconnect_user_requested.emit(user_id))
-        self.connections_table.setCellWidget(row, 3, disconnect_btn)
-        
-        # Update online count
-        self._update_stat_card_value(self.online_count_card, str(self.connections_table.rowCount()))
-
-    def remove_connection(self, user_id):
-        """Remove user from connections table"""
-        for i in range(self.connections_table.rowCount()):
-            if self.connections_table.item(i, 0).text() == user_id:
-                self.connections_table.removeRow(i)
-                break
-        # Update online count
-        self._update_stat_card_value(self.online_count_card, str(self.connections_table.rowCount()))
-
-    def update_stats(self, msg_count=None, ai_req_count=None):
-        """Update statistic counters"""
-        if msg_count is not None:
-            self._update_stat_card_value(self.message_count_card, str(msg_count))
-        if ai_req_count is not None:
-            self._update_stat_card_value(self.ai_req_card, str(ai_req_count))
+        self.stats_label.setText(
+            f"已处理消息总数: {msg_count}\n"
+            f"AI 请求总数: {ai_req_count}"
+            f"{token_part}"
+        )
 
     def update_token_stats(self, usage_dict):
-        """Update token usage table"""
-        self.token_table.setRowCount(0)
-        for cid, tokens in usage_dict.items():
-            row = self.token_table.rowCount()
-            self.token_table.insertRow(row)
-            self.token_table.setItem(row, 0, QTableWidgetItem(cid))
-            self.token_table.setItem(row, 1, QTableWidgetItem(str(tokens)))
-
-    def _update_stat_card_value(self, card, value):
-        label = card.findChild(QLabel, "value_label")
-        if label:
-            label.setText(value)
+        """Update token usage statistics"""
+        current_text = self.stats_label.text()
+        base_stats = current_text.split("\n\nToken 消耗")[0]
+        
+        token_text = "\n\nToken 消耗:\n"
+        for model, usage in usage_dict.items():
+            token_text += f"  {model}: {usage} tokens\n"
+            
+        self.stats_label.setText(base_stats + token_text)
+    
+    def update_charts(self, msg_rate, ai_rate):
+        self.graphs_panel.update_charts(msg_rate, ai_rate)
+        
+    def add_client(self, user_id, name, address):
+        row = self.clients_table.rowCount()
+        self.clients_table.insertRow(row)
+        self.clients_table.setItem(row, 0, QTableWidgetItem(user_id))
+        self.clients_table.setItem(row, 1, QTableWidgetItem(name))
+        ip_str = f"{address[0]}:{address[1]}" if isinstance(address, tuple) else str(address)
+        self.clients_table.setItem(row, 2, QTableWidgetItem(ip_str))
+        from datetime import datetime
+        self.clients_table.setItem(row, 3, QTableWidgetItem(datetime.now().strftime("%H:%M:%S")))
+        self.log_message(f"客户端加入: {name} ({ip_str})")
+        
+    def remove_client(self, user_id):
+        # Find row
+        for row in range(self.clients_table.rowCount()):
+            item = self.clients_table.item(row, 0)
+            if item and item.text() == user_id:
+                name = self.clients_table.item(row, 1).text()
+                self.clients_table.removeRow(row)
+                self.log_message(f"客户端断开: {name}")
+                break
