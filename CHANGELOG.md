@@ -1,5 +1,34 @@
 # 更新日志
 
+## v2.1 - 统一 AI 入口架构 (2026-01-21)
+
+### 重大变更
+
+1. **统一 AI Provider 接口**
+   - 新增 `core/providers/factory.py` 工厂模块
+   - `AIService` 现在通过 Provider 抽象层调用 AI，不再直接使用 HTTP 请求
+   - 支持自动检测 Provider 类型：`gemini-*` 模型使用 GeminiProvider，其他使用 OpenAI 兼容 Provider
+
+2. **Provider 自动切换**
+   - 根据模型名前缀自动选择 Provider
+   - 支持显式指定 `provider_type` 参数覆盖自动检测
+   - 业务逻辑代码无需关心底层 Provider 差异
+
+### 新增测试
+
+1. **Provider Factory 测试**
+   - 自动检测逻辑单元测试
+   - Provider 实例化测试
+   - Gemini Provider Mock 测试
+
+### 技术改进
+
+1. 移除 `ai_service.py` 中的直接 HTTP 请求代码，改用 Provider 模式
+2. 所有 AI 请求现在包含重试机制（指数退避）
+3. 统一的日志记录格式
+
+---
+
 ## v2.0 - Client-Server 架构版本 (2026-01-18)
 
 ### 重大变更

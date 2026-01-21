@@ -1,75 +1,45 @@
 """AI service integration for emotion recognition, memory extraction, and decision support.
-Uses requests library for better compatibility with local LLMs (LM Studio, Ollama, etc.)
+Uses provider abstraction for compatibility with multiple AI backends (OpenAI, Gemini, local LLMs).
 """
 import os
 import json
-import re
-import requests
+import logging
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
+from core.providers import create_provider, AIProvider
+
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """Handles all AI-related operations using direct HTTP requests"""
+    """Handles all AI-related operations through unified provider interface"""
     
     def __init__(self, api_key: Optional[str] = None, api_base: Optional[str] = None, 
-                 model: Optional[str] = None, timeout: float = 60.0):
-        """
-        Initialize AI service
-        
-        Args:
-            api_key: API key (can be dummy for local LLMs)
-            api_base: API base URL (e.g., http://127.0.0.1:1235/v1)
-            model: Model name
-            timeout: Request timeout in seconds
-        """
+                 model: Optional[str] = None, timeout: float = 60.0,
+                 provider_type: str = "auto"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "lm-studio")
         self.api_base = api_base or os.getenv("OPENAI_API_BASE", "http://127.0.0.1:1235/v1")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.timeout = timeout
         
-        # Ensure base URL doesn't end with /
         self.api_base = self.api_base.rstrip('/')
+        
+        self.provider: AIProvider = create_provider(
+            api_key=self.api_key,
+            model=self.model,
+            base_url=self.api_base,
+            timeout=self.timeout,
+            provider_type=provider_type
+        )
+        
+        logger.info(f"[AIService] Initialized with provider: {type(self.provider).__name__}")
     
     def _make_request(self, messages: List[Dict], temperature: float = 0.3, 
                       max_tokens: int = 500) -> Optional[str]:
-        """Make a chat completion request using requests library"""
-        url = f"{self.api_base}/chat/completions"
-        
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            return data["choices"][0]["message"]["content"].strip()
-        except requests.Timeout:
-            print(f"[AI] Request timed out after {self.timeout}s")
-            return None
-        except requests.RequestException as e:
-            print(f"[AI] Request failed: {e}")
-            return None
-        except (KeyError, IndexError) as e:
-            print(f"[AI] Failed to parse response: {e}")
-            return None
+        return self.provider.generate_content(messages, temperature, max_tokens)
     
     def analyze_emotion(self, recent_messages: List[Dict]) -> Dict[str, float]:
         """
