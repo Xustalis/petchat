@@ -1,107 +1,169 @@
-# pet-chat
+# 🐾 PetChat
 
-一款基于 PyQt6 的桌面聊天应用，采用 Client-Server 架构，支持多用户实时通信，并集成 AI 情绪分析和智能建议功能。
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/PyQt6-Qt6-41CD52?style=for-the-badge&logo=qt" alt="PyQt6">
+  <img src="https://img.shields.io/badge/license-GPLv3-green?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/github/actions/workflow/status/XenithMC/petchat/ci.yml?style=for-the-badge&label=CI" alt="CI">
+</p>
 
-## 核心特性
-
-### 1. Client-Server 实时通信
-* **服务器集中管理**：所有消息通过服务器中转，支持多客户端同时在线
-* **自动用户发现**：连接服务器后自动显示在线用户列表
-* **公共聊天室**：支持多人公共聊天
-* **私人对话**：支持点对点私聊
-
-### 2. 情绪宠物系统 🐱
-* **实时氛围感知**：AI 分析对话的整体情绪趋势（平和、愉快、紧张、消极）
-* **拟物化交互**：宠物通过表情变化、浮动动画实时反馈聊天氛围
-
-### 3. 智能记忆与提炼
-* **结构化提炼**：自动从对话中提取"共同事件"、"明确约定"及"长期话题"
-* **本地化存储**：所有记忆摘要存储于本地 SQLite 数据库，可随时查看或清空
-
-### 4. 决策与计划辅助
-* **意图识别触发**：识别时间或行为关键词时，自动生成行程建议
-* **交互式采用**：支持将 AI 建议一键填入输入框
----
-
-## 🛠 技术栈
-
-* **核心语言**：Python 3.10+
-* **GUI 框架**：PyQt6
-* **网络通信**：TCP Socket (Client-Server 架构)
-* **AI 服务**：OpenAI API 兼容协议
-* **数据管理**：SQLite
+<p align="center">
+  <b>一款智能桌面聊天应用 —— 拥有情绪感知宠物与 AI 记忆提炼功能</b>
+</p>
 
 ---
 
-## 项目结构
+## ✨ 核心特性
 
+| 功能 | 描述 |
+|------|------|
+| 🌐 **实时通信** | Client-Server 架构，多用户同时在线，公共群聊 + 私人对话 |
+| 🐱 **情绪宠物** | AI 分析对话氛围，宠物表情随情绪动态变化 |
+| 🧠 **智能记忆** | 自动提炼对话中的共同事件、约定和话题 |
+| 💡 **AI 建议** | 意图识别，智能生成行程和决策建议 |
+
+---
+
+## 🏗️ 系统架构
+
+```mermaid
+graph TB
+    subgraph Client["🖥️ 客户端 (PyQt6)"]
+        UI["MainWindow<br/>用户界面"]
+        NM["NetworkManager<br/>网络通信"]
+        DB_C[("SQLite<br/>本地存储")]
+    end
+    
+    subgraph Server["🖧 服务器"]
+        SC["ServerCore<br/>消息路由"]
+        AI["AIService<br/>智能分析"]
+        SM["SessionManager<br/>会话管理"]
+    end
+    
+    subgraph Providers["🤖 AI Providers"]
+        OP["OpenAI<br/>兼容协议"]
+        GP["Gemini<br/>原生 API"]
+    end
+    
+    UI --> NM
+    NM <-->|"TCP Socket<br/>Protocol.pack/unpack"| SC
+    SC --> AI
+    AI --> SM
+    AI --> OP
+    AI --> GP
+    UI --> DB_C
+    
+    style Client fill:#1a1a2e,stroke:#16213e,color:#fff
+    style Server fill:#0f3460,stroke:#16213e,color:#fff
+    style Providers fill:#533483,stroke:#16213e,color:#fff
 ```
-petchat/
-├── server.py            # 聊天服务器，负责消息路由和用户管理
-├── main.py              # 客户端应用入口
-├── core/                # 核心功能模块
-│   ├── network.py       # TCP 网络通信客户端
-│   ├── ai_service.py    # AI 情绪分析、记忆提取与建议生成
-│   ├── database.py      # SQLite 数据库管理
-│   └── config_manager.py # 配置管理器
-├── ui/                  # UI 组件模块
-│   ├── main_window.py   # 主窗口
-│   ├── pet_widget.py    # 情绪宠物组件
-│   ├── memory_viewer.py # 记忆查看器
-│   ├── theme.py         # 主题样式定义
-│   └── api_config_dialog.py # API 配置对话框
-└── config/              # 配置目录
-    └── settings.py      # 系统参数配置
-```
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
-### 1. 环境准备
+### 1️⃣ 环境准备
 
 ```bash
+# 克隆仓库
+git clone https://github.com/XenithMC/petchat.git
+cd petchat
+
 # Windows
 setup_venv.bat
 
-# Linux/Mac
+# Linux/macOS
 source setup_venv.sh
 
 # 或手动安装
 pip install -r requirements.txt
 ```
 
-### 2. 启动服务器
+### 2️⃣ 启动服务器
 
 ```bash
 python server.py
 ```
 
-服务器将在 `0.0.0.0:8888` 监听连接。
+服务器将在 `0.0.0.0:8888` 启动监听。
 
-### 3. 启动客户端
+### 3️⃣ 启动客户端
 
 ```bash
 python main.py
-```
 
-启动时输入服务器 IP 地址（本机测试使用 `127.0.0.1`）。
-
-也可以通过命令行参数指定：
-```bash
+# 或直接指定服务器 IP
 python main.py --server-ip 192.168.1.100
 ```
 
-### 4. 配置 AI 功能（可选）
+### 4️⃣ 配置 AI（可选）
 
-通过菜单栏 `设置 -> AI 配置` (或 `Ctrl+K`) 配置 API Key。
+通过菜单 `设置 → AI 配置` 或 `Ctrl+K` 配置 API Key。
+
+支持的 AI Provider：
+- **OpenAI 兼容协议**（LM Studio、Ollama、OpenAI API 等）
+- **Google Gemini**
 
 ---
 
-## 打包分发
+## 📁 项目结构
+
+```
+petchat/
+├── server.py            # 聊天服务器入口
+├── main.py              # 客户端应用入口
+├── core/
+│   ├── network.py       # TCP 网络通信
+│   ├── protocol.py      # 消息协议 (Header + JSON)
+│   ├── ai_service.py    # AI 服务封装
+│   ├── database.py      # SQLite 数据库
+│   └── providers/       # AI Provider 实现
+│       ├── openai_provider.py
+│       ├── gemini_provider.py
+│       └── factory.py   # Provider 工厂
+├── ui/
+│   ├── main_window.py   # 主窗口
+│   ├── pet_widget.py    # 情绪宠物组件
+│   └── theme.py         # 暗黑主题
+└── tests/               # 测试套件
+```
+
+---
+
+## 🔧 协议格式
+
+```
+┌────────────────────────────────────────┐
+│  Header (8 bytes)  │     Payload       │
+├────────────────────┼───────────────────┤
+│ Length (4B) │ CRC32 (4B) │   JSON      │
+└────────────────────────────────────────┘
+```
+
+- **Header**: 固定 8 字节，包含载荷长度和 CRC32 校验
+- **Payload**: UTF-8 编码的 JSON 数据
+
+---
+
+## 🧪 测试
 
 ```bash
-# 使用 PyInstaller
+# 运行 AI Provider 测试
+python -m pytest tests/test_ai_providers.py -v
+
+# 网络通信测试
+python tests/network_test.py
+
+# 压力测试
+python tests/stress_test.py
+```
+
+---
+
+## 📦 打包分发
+
+```bash
+# 客户端打包
 python -m PyInstaller --name=pet-chat --onefile --windowed main.py
 
 # 服务器打包
@@ -112,15 +174,32 @@ python -m PyInstaller --name=pet-chat-server --onefile server.py
 
 ---
 
-## 隐私与安全
+## 🔒 隐私与安全
 
-* **数据本地化**：对话内容与记忆仅存储于本地 `petchat.db` 数据库
-* **透明 AI 请求**：AI 仅在特定分析间隔发送必要的匿名上下文
+- **数据本地化**：对话内容与记忆仅存储于本地 `petchat.db`
+- **透明 AI 请求**：AI 仅在分析间隔发送必要的匿名上下文
 
 ---
 
-## 开源协议
-
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+## 📄 开源协议
 
 本项目采用 **GNU GPLv3** 协议。
+
+```
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+```
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request

@@ -157,7 +157,6 @@ class ServerController(QObject):
         self.window.stop_server_requested.connect(self.stop_server)
         self.window.api_config_changed.connect(self.update_ai_config)
         self.window.disconnect_user_requested.connect(self.disconnect_user)
-        self.window.disconnect_user_requested.connect(self.disconnect_user)
         # self.window.refresh_stats_requested.connect(self.refresh_stats) # Removed from UI
         # self.window.test_ai_requested.connect(self.test_ai_connection) # Removed from UI
         self.window.closeEvent = self.on_close
@@ -244,7 +243,6 @@ class ServerController(QObject):
         if self.server_thread:
             self.server_thread.stop()
             self.server_thread.quit()
-            self.server_thread.wait()
             self.server_thread.wait()
             self.server_thread = None
         self.stats_timer.stop()

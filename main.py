@@ -166,7 +166,6 @@ class PetChatApp(QObject):
         # AI signals from server
         self.network.ai_suggestion_received.connect(self._on_server_ai_suggestion)
         self.network.ai_emotion_received.connect(self._on_server_ai_emotion)
-        self.network.ai_emotion_received.connect(self._on_server_ai_emotion)
         self.network.ai_memory_received.connect(self._on_server_ai_memory)
         self.network.reconnection_status.connect(self._on_reconnection_status)
         
@@ -571,7 +570,6 @@ class PetChatApp(QObject):
         
         # Show window
         self.window.show()
-        print("[DEBUG] Window shown")
         print("[DEBUG] Window shown")
         
         # Run application
