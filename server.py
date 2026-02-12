@@ -22,6 +22,7 @@ import socket
 import threading
 import json
 import time
+import uuid
 from typing import Dict, Optional, List, Any
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, QRunnable, QThreadPool, pyqtSlot, QTimer
@@ -148,6 +149,8 @@ class ServerController(QObject):
         self.session_manager = AISessionManager()
         self.ai_service = None
         self.persist_token_usage = True
+        self._ai_inflight = {}
+        self._ai_inflight_lock = threading.Lock()
         
         self._init_connections()
         self._load_config()
@@ -355,23 +358,36 @@ class ServerController(QObject):
         """Process AI request in background"""
         if not self.ai_service:
             self.window.log_message("Request dropped: AI Service not ready")
-            # Should send error response back to client?
             return
-
         conversation_id = request_dict.get("conversation_id")
         context_snapshot = request_dict.get("context_snapshot", [])
+        if not conversation_id or not isinstance(context_snapshot, list):
+            self.window.log_message("AI request invalid: missing conversation_id or context_snapshot")
+            return
+        request_id = uuid.uuid4().hex
+        now = time.perf_counter()
+        with self._ai_inflight_lock:
+            self._ai_inflight[request_id] = {
+                "start": now,
+                "user_id": user_id,
+                "conversation_id": conversation_id
+            }
+        req_size = len(json.dumps(request_dict, ensure_ascii=False).encode("utf-8"))
+        self.window.log_message(
+            f"AI request received: id={request_id} user={user_id} conv={conversation_id} bytes={req_size}"
+        )
         
         # Update session context
         self.session_manager.update_context(conversation_id, context_snapshot)
         
         # Submit to thread pool
-        worker = AIWorker(self._process_ai, conversation_id, context_snapshot)
+        worker = AIWorker(self._process_ai, request_id, conversation_id, context_snapshot)
         worker.signals.result.connect(lambda res: self._on_ai_result(user_id, res))
         worker.signals.error.connect(lambda err: self.window.log_message(f"AI Error: {err}"))
         
         QThreadPool.globalInstance().start(worker)
 
-    def _process_ai(self, conversation_id, context_messages):
+    def _process_ai(self, request_id, conversation_id, context_messages):
         # This runs in background thread
         # 1. Analyze emotion
         emotions = self.ai_service.analyze_emotion(context_messages)
@@ -383,6 +399,7 @@ class ServerController(QObject):
         suggestion = self.ai_service.generate_suggestion(context_messages)
         
         return {
+            "request_id": request_id,
             "conversation_id": conversation_id,
             "emotion": emotions,
             "memories": memories,
@@ -392,24 +409,58 @@ class ServerController(QObject):
     def _on_ai_result(self, user_id, result):
         # Runs in Main Thread
         cid = result["conversation_id"]
+        request_id = result.get("request_id", "")
+        start_time = None
+        with self._ai_inflight_lock:
+            meta = self._ai_inflight.pop(request_id, None)
+            if meta:
+                start_time = meta.get("start")
+        if start_time is not None:
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            self.window.log_message(f"AI request done: id={request_id} latency_ms={latency_ms}")
         
         # Send results back to client
         if self.server_thread:
             # Send Emotion
-            if result["emotion"]:
-                msg = AIEmotion(cid, result["emotion"]).to_dict()
-                self.server_thread.send_to_client(user_id, msg)
+            emotion = result.get("emotion")
+            if isinstance(emotion, dict) and emotion:
+                filtered = {k: float(v) for k, v in emotion.items() if isinstance(v, (int, float))}
+                if filtered:
+                    msg = AIEmotion(cid, filtered).to_dict()
+                    self.server_thread.send_to_client(user_id, msg)
+                    size = len(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+                    self.window.log_message(f"AI emotion sent: id={request_id} bytes={size}")
+                else:
+                    self.window.log_message(f"AI emotion invalid: id={request_id}")
+            elif emotion is not None:
+                self.window.log_message(f"AI emotion invalid: id={request_id}")
                 
             # Send Memories
-            if result["memories"]:
-                msg = AIMemory(cid, result["memories"]).to_dict()
-                self.server_thread.send_to_client(user_id, msg)
+            memories = result.get("memories")
+            if isinstance(memories, list) and memories:
+                cleaned = [m for m in memories if isinstance(m, dict) and m.get("content")]
+                if cleaned:
+                    msg = AIMemory(cid, cleaned).to_dict()
+                    self.server_thread.send_to_client(user_id, msg)
+                    size = len(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+                    self.window.log_message(f"AI memories sent: id={request_id} bytes={size}")
+                else:
+                    self.window.log_message(f"AI memories invalid: id={request_id}")
+            elif memories is not None and memories != []:
+                self.window.log_message(f"AI memories invalid: id={request_id}")
                 
             # Send Suggestion
-            if result["suggestion"]:
-                s = result["suggestion"]
-                msg = AISuggestion(cid, s["title"], s["content"], s.get("type", "suggestion")).to_dict()
-                self.server_thread.send_to_client(user_id, msg)
+            suggestion = result.get("suggestion")
+            if isinstance(suggestion, dict):
+                title = suggestion.get("title")
+                content = suggestion.get("content")
+                if isinstance(title, str) and title.strip() and isinstance(content, str) and content.strip():
+                    msg = AISuggestion(cid, title, content, suggestion.get("type", "suggestion")).to_dict()
+                    self.server_thread.send_to_client(user_id, msg)
+                    size = len(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+                    self.window.log_message(f"AI suggestion sent: id={request_id} bytes={size}")
+                elif suggestion:
+                    self.window.log_message(f"AI suggestion invalid: id={request_id}")
         
         # Update stats
         # self.session_manager.track_usage(cid, tokens) # Need token usage from AIService to track strictly

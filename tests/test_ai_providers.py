@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.providers.retry import retry_with_backoff, RetryError
+from core.providers.retry import retry_with_backoff, RetryError, CircuitBreaker
 
 
 class TestRetryDecorator(unittest.TestCase):
@@ -88,6 +88,24 @@ class TestRetryDecorator(unittest.TestCase):
             raise_different_error()
 
 
+class TestCircuitBreaker(unittest.TestCase):
+    
+    def test_circuit_opens_after_failures(self):
+        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
+        self.assertTrue(cb.allow_request())
+        cb.record_failure()
+        cb.record_failure()
+        self.assertFalse(cb.allow_request())
+    
+    def test_circuit_half_open_then_close(self):
+        cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0.01)
+        cb.record_failure()
+        time.sleep(0.02)
+        self.assertTrue(cb.allow_request())
+        cb.record_success()
+        self.assertEqual(cb.state, "closed")
+
+
 class TestOpenAIProvider(unittest.TestCase):
     
     @patch('core.providers.openai_provider.requests.post')
@@ -97,6 +115,7 @@ class TestOpenAIProvider(unittest.TestCase):
         mock_response.json.return_value = {
             "choices": [{"message": {"content": "Hello, world!"}}]
         }
+        mock_response.content = b'{"ok":true}'
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
         
@@ -118,6 +137,7 @@ class TestOpenAIProvider(unittest.TestCase):
             Mock(
                 status_code=200,
                 json=Mock(return_value={"choices": [{"message": {"content": "Success after retry"}}]}),
+                content=b'{"ok":true}',
                 raise_for_status=Mock()
             )
         ]
@@ -129,6 +149,37 @@ class TestOpenAIProvider(unittest.TestCase):
         
         self.assertEqual(result, "Success after retry")
         self.assertEqual(mock_post.call_count, 3)
+
+    @patch('core.providers.openai_provider.requests.post')
+    def test_timeout_returns_none(self, mock_post):
+        import requests
+        mock_post.side_effect = requests.Timeout("timeout")
+        
+        from core.providers.openai_provider import OpenAIProvider
+        provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
+        
+        result = provider.generate_content([{"role": "user", "content": "Hi"}])
+        
+        self.assertIsNone(result)
+        self.assertEqual(mock_post.call_count, 3)
+    
+    @patch('core.providers.openai_provider.requests.post')
+    def test_empty_response_returns_none(self, mock_post):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "   "}}]
+        }
+        mock_response.content = b'{"choices":[{"message":{"content":"   "}}]}'
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+        
+        from core.providers.openai_provider import OpenAIProvider
+        provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
+        
+        result = provider.generate_content([{"role": "user", "content": "Hi"}])
+        
+        self.assertIsNone(result)
 
 
 class TestProviderFactory(unittest.TestCase):
@@ -211,6 +262,29 @@ class TestGeminiProvider(unittest.TestCase):
         
         self.assertEqual(result, "Hello from Gemini!")
         mock_genai.GenerativeModel.assert_called_once()
+
+
+class TestAIServiceCircuitBreaker(unittest.TestCase):
+    
+    @patch('core.ai_service.create_provider')
+    def test_ai_service_circuit_breaker_blocks(self, mock_create):
+        mock_provider = Mock()
+        mock_provider.generate_content.side_effect = Exception("fail")
+        mock_create.return_value = mock_provider
+        
+        from core.ai_service import AIService
+        service = AIService(
+            api_key="k",
+            api_base="http://localhost:1235/v1",
+            model="gpt-4o-mini",
+            circuit_failure_threshold=2,
+            circuit_recovery_timeout=0.1
+        )
+        
+        self.assertIsNone(service._make_request([{"role": "user", "content": "Hi"}]))
+        self.assertIsNone(service._make_request([{"role": "user", "content": "Hi"}]))
+        self.assertEqual(service.circuit_breaker.state, "open")
+        self.assertIsNone(service._make_request([{"role": "user", "content": "Hi"}]))
 
 
 if __name__ == "__main__":

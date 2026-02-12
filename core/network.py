@@ -7,6 +7,8 @@ import socket
 import threading
 import json
 import time
+import logging
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -16,6 +18,8 @@ from core.protocol import (
     pack_message, unpack_header, verify_crc,
     AIAnalysisRequest
 )
+
+logger = logging.getLogger(__name__)
 
 class NetworkManager(QObject):
     """
@@ -186,6 +190,9 @@ class NetworkManager(QObject):
             sender_name=self.user_name,
             context_snapshot=context_snapshot
         )
+        size = len(json.dumps(request.to_dict(), ensure_ascii=False).encode("utf-8"))
+        ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        logger.info(f"[Network] AI request send: ts={ts} bytes={size} conv={conversation_id}")
         self._send_message_async(request.to_dict())
 
     def _send_message_async(self, message: dict):
@@ -312,23 +319,59 @@ class NetworkManager(QObject):
         
         # AI message handlers
         elif msg_type == MessageType.AI_SUGGESTION.value:
+            title = message.get("title")
+            content = message.get("content")
+            suggestion_type = message.get("suggestion_type", "suggestion")
+            if not isinstance(title, str) or not title.strip() or not isinstance(content, str) or not content.strip():
+                ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.error(f"[Network] Invalid AI suggestion: ts={ts} conv={message.get('conversation_id','')}")
+                return
+            size = len(json.dumps(message, ensure_ascii=False).encode("utf-8"))
+            ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            logger.info(f"[Network] AI suggestion recv: ts={ts} bytes={size} conv={message.get('conversation_id','')}")
             self.ai_suggestion_received.emit(
                 message.get("conversation_id", ""),
                 {
-                    "title": message.get("title", "AI 建议"),
-                    "content": message.get("content", ""),
-                    "type": message.get("suggestion_type", "suggestion")
+                    "title": title,
+                    "content": content,
+                    "type": suggestion_type
                 }
             )
         
         elif msg_type == MessageType.AI_EMOTION.value:
+            scores = message.get("scores", {})
+            if not isinstance(scores, dict) or not scores:
+                ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.error(f"[Network] Invalid AI emotion: ts={ts} conv={message.get('conversation_id','')}")
+                return
+            filtered = {k: float(v) for k, v in scores.items() if isinstance(v, (int, float))}
+            if not filtered:
+                ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.error(f"[Network] Empty AI emotion: ts={ts} conv={message.get('conversation_id','')}")
+                return
+            size = len(json.dumps(message, ensure_ascii=False).encode("utf-8"))
+            ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            logger.info(f"[Network] AI emotion recv: ts={ts} bytes={size} conv={message.get('conversation_id','')}")
             self.ai_emotion_received.emit(
                 message.get("conversation_id", ""),
-                message.get("scores", {})
+                filtered
             )
         
         elif msg_type == MessageType.AI_MEMORY.value:
+            memories = message.get("memories", [])
+            if not isinstance(memories, list):
+                ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.error(f"[Network] Invalid AI memories: ts={ts} conv={message.get('conversation_id','')}")
+                return
+            cleaned = [m for m in memories if isinstance(m, dict) and m.get("content")]
+            if not cleaned:
+                ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.error(f"[Network] Empty AI memories: ts={ts} conv={message.get('conversation_id','')}")
+                return
+            size = len(json.dumps(message, ensure_ascii=False).encode("utf-8"))
+            ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            logger.info(f"[Network] AI memories recv: ts={ts} bytes={size} conv={message.get('conversation_id','')}")
             self.ai_memory_received.emit(
                 message.get("conversation_id", ""),
-                message.get("memories", [])
+                cleaned
             )

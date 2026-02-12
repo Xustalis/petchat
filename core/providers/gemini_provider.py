@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import datetime
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 from typing import List, Dict, Optional
@@ -15,6 +16,15 @@ class GeminiProvider(AIProvider):
         genai.configure(api_key=api_key)
 
     def generate_content(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 500) -> Optional[str]:
+        if not isinstance(self.api_key, str) or not self.api_key.strip():
+            logger.error("[Gemini] Invalid API key")
+            return None
+        if not isinstance(self.model, str) or not self.model.strip():
+            logger.error("[Gemini] Invalid model")
+            return None
+        if not isinstance(messages, list) or not messages:
+            logger.error("[Gemini] Invalid messages payload")
+            return None
         gemini_history = []
         system_instruction = ""
         
@@ -49,6 +59,7 @@ class GeminiProvider(AIProvider):
             )
         )
         def _do_request() -> str:
+            req_ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             start_time = time.perf_counter()
             
             model = genai.GenerativeModel(
@@ -70,15 +81,31 @@ class GeminiProvider(AIProvider):
             )
             
             latency_ms = int((time.perf_counter() - start_time) * 1000)
-            logger.info(f"[Gemini] Request completed: model={self.model}, latency={latency_ms}ms")
-            
-            return response.text.strip()
+            response_text = response.text if response else ""
+            body_size = len((response_text or "").encode("utf-8"))
+            logger.info(
+                f"[Gemini] Response: ts={req_ts} bytes={body_size} latency_ms={latency_ms}"
+            )
+            if not isinstance(response_text, str):
+                raise ValueError("Missing response text")
+            response_text = response_text.strip()
+            if not response_text:
+                raise ValueError("Empty response text")
+            logger.info(
+                f"[Gemini] Request completed: ts={req_ts} model={self.model} latency_ms={latency_ms}"
+            )
+            return response_text
         
         try:
+            req_ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            prompt_size = len((last_message.get("parts", [""])[0] or "").encode("utf-8"))
+            logger.info(
+                f"[Gemini] Request: ts={req_ts} model={self.model} prompt_bytes={prompt_size} timeout={self.timeout}"
+            )
             return _do_request()
         except RetryError as e:
-            logger.error(f"[Gemini] All retries exhausted: {e.last_exception}")
+            logger.exception(f"[Gemini] All retries exhausted: {e.last_exception}")
             return None
         except Exception as e:
-            logger.error(f"[Gemini] Request failed: {e}")
+            logger.exception(f"[Gemini] Request failed: {e}")
             return None
