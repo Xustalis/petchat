@@ -69,8 +69,14 @@ class OpenAIProvider(AIProvider):
             choices = data.get("choices")
             if not isinstance(choices, list) or not choices:
                 raise ValueError("Missing choices in response")
-            message = choices[0].get("message", {})
-            content = message.get("content")
+            first_choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, str):
+                content = first_choice.get("text") if isinstance(first_choice, dict) else None
+            if not isinstance(content, str):
+                delta = first_choice.get("delta") if isinstance(first_choice, dict) else None
+                content = delta.get("content") if isinstance(delta, dict) else None
             if not isinstance(content, str):
                 raise ValueError("Missing content in response")
             content = content.strip()

@@ -323,7 +323,17 @@ class ServerController(QObject):
             resp = requests.post(f"{base}/chat/completions", json=payload, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            choices = data.get("choices", [])
+            first_choice = choices[0] if isinstance(choices, list) and choices else {}
+            message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, str):
+                content = first_choice.get("text") if isinstance(first_choice, dict) else None
+            if not isinstance(content, str):
+                delta = first_choice.get("delta") if isinstance(first_choice, dict) else None
+                content = delta.get("content") if isinstance(delta, dict) else None
+            if not isinstance(content, str):
+                raise ValueError("Missing content in response")
             return f"✅ SUCCESS: Chat completion worked!\nResponse: {content}"
         except Exception as e2:
             errors.append(f"Chat Completion: {e2}")

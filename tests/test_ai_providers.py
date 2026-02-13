@@ -181,6 +181,24 @@ class TestOpenAIProvider(unittest.TestCase):
         
         self.assertIsNone(result)
 
+    @patch('core.providers.openai_provider.requests.post')
+    def test_text_response_supported(self, mock_post):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [{"text": "Hello from text"}]
+        }
+        mock_response.content = b'{"choices":[{"text":"Hello from text"}]}'
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+        
+        from core.providers.openai_provider import OpenAIProvider
+        provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
+        
+        result = provider.generate_content([{"role": "user", "content": "Hi"}])
+        
+        self.assertEqual(result, "Hello from text")
+
 
 class TestProviderFactory(unittest.TestCase):
     
@@ -285,6 +303,54 @@ class TestAIServiceCircuitBreaker(unittest.TestCase):
         self.assertIsNone(service._make_request([{"role": "user", "content": "Hi"}]))
         self.assertEqual(service.circuit_breaker.state, "open")
         self.assertIsNone(service._make_request([{"role": "user", "content": "Hi"}]))
+
+
+class TestAIServicePrompts(unittest.TestCase):
+    
+    @patch('core.ai_service.create_provider')
+    def test_context_trimming(self, mock_create):
+        mock_provider = Mock()
+        mock_provider.generate_content.return_value = '{"neutral":1}'
+        mock_create.return_value = mock_provider
+        
+        from core.ai_service import AIService
+        service = AIService(api_key="k", api_base="http://localhost:1235/v1", model="gpt-4o-mini")
+        service.max_context_chars = 30
+        
+        messages = [{"sender": "u", "content": "a" * 20}, {"sender": "u", "content": "b" * 20}]
+        context = service._build_context(messages)
+        
+        self.assertLessEqual(len(context), 30)
+    
+    @patch('core.ai_service.create_provider')
+    def test_suggestion_fallback_without_keywords(self, mock_create):
+        mock_provider = Mock()
+        mock_provider.generate_content.return_value = '{"title":"t","content":"c","type":"plan"}'
+        mock_create.return_value = mock_provider
+        
+        from core.ai_service import AIService
+        service = AIService(api_key="k", api_base="http://localhost:1235/v1", model="gpt-4o-mini")
+        service.suggestion_fallback = True
+        
+        result = service.generate_suggestion([{"sender": "u", "content": "今天聊聊天"}])
+        
+        self.assertIsInstance(result, dict)
+        self.assertIn("title", result)
+        mock_provider.generate_content.assert_not_called()
+
+    @patch('core.ai_service.create_provider')
+    def test_prompt_template_update(self, mock_create):
+        mock_provider = Mock()
+        mock_provider.generate_content.return_value = '{"neutral":1}'
+        mock_create.return_value = mock_provider
+        
+        from core.ai_service import AIService
+        service = AIService(api_key="k", api_base="http://localhost:1235/v1", model="gpt-4o-mini")
+        service.update_prompt_template("emotion", "sys {context}", "usr {context}")
+        
+        messages = service._render_prompt("emotion", "ctx")
+        self.assertEqual(messages[0]["content"], "sys ctx")
+        self.assertEqual(messages[1]["content"], "usr ctx")
 
 
 if __name__ == "__main__":
