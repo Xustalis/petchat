@@ -265,9 +265,8 @@ the Free Software Foundation, either version 3 of the License, or
 
 ## 📬 联系方式
 
-- **作者**: XenithMC
-- **仓库**: [github.com/XenithMC/petchat](https://github.com/XenithMC/petchat)
+- **作者**: [Xu](https://github.com/Xustalis/petchat)
+- **仓库**: [https://github.com/Xustalis/petchat](https://github.com/Xustalis/petchat)
 
 ---
 
-<p align="center">Made with ❤️ by PetChat Team</p>
