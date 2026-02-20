@@ -265,7 +265,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 ## 📬 联系方式
 
-- **作者**: [Xu](https://github.com/Xustalis/petchat)
+- **作者**: [Xustalis](https://github.com/Xustalis)
 - **仓库**: [https://github.com/Xustalis/petchat](https://github.com/Xustalis/petchat)
 
 ---
