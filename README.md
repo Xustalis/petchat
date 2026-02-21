@@ -4,7 +4,6 @@
   <img src="https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/PyQt6-Qt6-41CD52?style=for-the-badge&logo=qt" alt="PyQt6">
   <img src="https://img.shields.io/badge/license-GPLv3-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/github/actions/workflow/status/XenithMC/petchat/ci.yml?style=for-the-badge&label=CI" alt="CI">
 </p>
 
 <p align="center">
@@ -16,6 +15,7 @@
   <a href="#-快速开始">快速开始</a> •
   <a href="#-系统架构">系统架构</a> •
   <a href="#-项目结构">项目结构</a> •
+  <a href="#-常见问题">常见问题</a> •
   <a href="#-贡献">贡献</a>
 </p>
 
@@ -39,14 +39,21 @@
 ### 1️⃣ 环境准备
 
 **系统要求：**
-- Python 3.10+
-- Windows 10/11, Linux, macOS
+
+| 组件 | 版本要求 |
+|------|----------|
+| Python | 3.10+ |
+| 操作系统 | Windows 10/11, Linux, macOS |
 
 ```bash
 # 克隆仓库
 git clone https://github.com/XenithMC/petchat.git
 cd petchat
+```
 
+**安装依赖：**
+
+```bash
 # Windows
 setup_venv.bat
 
@@ -66,6 +73,12 @@ python server_cli.py
 服务器默认在 `0.0.0.0:8888` 启动监听。
 
 **可选参数：**
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--port` | 指定服务器端口 | 8888 |
+| `--log-level` | 日志级别 (DEBUG/INFO/WARNING/ERROR) | INFO |
+
 ```bash
 # 指定端口
 python server_cli.py --port 9000
@@ -88,8 +101,11 @@ python main.py --server-ip 192.168.1.100
 通过菜单 `设置 → AI 配置` 或快捷键 `Ctrl+K` 配置 API Key。
 
 **支持的 AI Provider：**
-- **OpenAI 兼容协议**（LM Studio、Ollama、OpenAI API 等）
-- **Google Gemini**
+
+| Provider | 说明 |
+|----------|------|
+| OpenAI 兼容 | 支持 OpenAI API、LM Studio、Ollama 等 |
+| Google Gemini | Google 原生 Gemini API |
 
 ---
 
@@ -137,8 +153,11 @@ graph TB
 └────────────────────────────────────────┘
 ```
 
-- **Header**: 固定 8 字节，包含载荷长度和 CRC32 校验
-- **Payload**: UTF-8 编码的 JSON 数据
+| 字段 | 大小 | 说明 |
+|------|------|------|
+| Length | 4 字节 | Payload 数据长度 |
+| CRC32 | 4 字节 | 数据校验码 |
+| Payload | 可变 | UTF-8 编码的 JSON 数据 |
 
 ---
 
@@ -224,9 +243,27 @@ python -m PyInstaller --name=pet-chat-server --onefile server_cli.py
 
 ## 🔒 隐私与安全
 
-- **数据本地化**：对话内容与记忆仅存储于本地 `petchat.db`
-- **透明 AI 请求**：AI 仅在分析间隔发送必要的匿名上下文
-- **可配置 Provider**：支持本地 AI 服务（如 Ollama），数据不出内网
+| 特性 | 说明 |
+|------|------|
+| **数据本地化** | 对话内容与记忆仅存储于本地 `petchat.db` |
+| **透明 AI 请求** | AI 仅在分析间隔发送必要的匿名上下文 |
+| **可配置 Provider** | 支持本地 AI 服务（如 Ollama），数据不出内网 |
+
+---
+
+## ❓ 常见问题
+
+### Q: 为什么宠物没有显示情绪变化？
+A: 请确保已配置 AI Provider 并在设置中启用了情绪分析功能。
+
+### Q: 如何连接远程服务器？
+A: 启动客户端时使用 `--server-ip` 参数指定服务器 IP 地址。
+
+### Q: 支持哪些 AI 模型？
+A: 支持所有 OpenAI 兼容协议的模型（如 GPT-4、Claude 通过代理等）以及 Google Gemini 系列模型。
+
+### Q: 数据存储在什么位置？
+A: 数据存储在用户目录下的 `petchat.db` SQLite 数据库文件中。
 
 ---
 
@@ -270,3 +307,4 @@ the Free Software Foundation, either version 3 of the License, or
 
 ---
 
+<p align="center">Made with ❤️ by the PetChat Team</p>
